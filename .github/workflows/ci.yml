@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (dictator, rustfmt, clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1 # clippy builds the FFI crate, which needs Ruby headers
+        with:
+          ruby-version: "4.0"
+      - uses: dtolnay/rust-toolchain@1.99
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: seuros/dictator-setup@v1
+      - run: dictator lint .
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  core:
+    name: Core library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+      - uses: dtolnay/rust-toolchain@1.99
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p imprimatur --all-features
+      - run: cargo test -p imprimatur-cli
+      # The unpacked copy in target/package trips rust-cache's cleanup.
+      - run: cargo package -p imprimatur --allow-dirty && rm -rf target/package
+
+  ruby:
+    name: Ruby 4.0 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - uses: dtolnay/rust-toolchain@1.99
+      - uses: Swatinem/rust-cache@v2
+      - run: bundle exec rake test
+
+  freebsd:
+    name: FreeBSD 15.1 (native)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.1"
+          usesh: true
+          copyback: false
+          # ruby40 ships RubyGems but not the gem command (FreeBSD packages it
+          # only for its default Ruby). llvm: libclang for bindgen. rustup: the
+          # crate's rust-version.
+          prepare: |
+            fetch -qo /tmp/upkg-install.sh https://raw.githubusercontent.com/seuros/upkg/master/install.sh
+            sh /tmp/upkg-install.sh
+            upkg install ruby40 git curl llvm gmake
+            printf '%s\n' '#!/bin/sh' 'exec ruby40 -e "require %q(rubygems/gem_runner); Gem::GemRunner.new.run(ARGV)" -- "$@"' > /usr/local/bin/gem
+            chmod +x /usr/local/bin/gem
+            ln -sf ruby40 /usr/local/bin/ruby
+            curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.99
+          run: |
+            . "$HOME/.cargo/env"
+            LIBCLANG_PATH="$(ls -d /usr/local/llvm*/lib | sort -V | tail -1)"
+            export LIBCLANG_PATH
+            ruby -v
+            gem install bundler --no-document
+            bundle install
+            bundle exec rake test

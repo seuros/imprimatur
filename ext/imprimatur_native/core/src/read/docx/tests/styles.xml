@@ -1,0 +1,9 @@
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="Titre"><w:name w:val="Title"/></w:style>
+  <w:style w:type="paragraph" w:styleId="H2"><w:name w:val="heading 2"/></w:style>
+  <w:style w:type="paragraph" w:styleId="Sub"><w:basedOn w:val="H2"/></w:style>
+  <w:style w:type="paragraph" w:styleId="Bullets">
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+  <w:style w:type="character" w:styleId="Strong"><w:name w:val="heading 1"/></w:style>
+</w:styles>

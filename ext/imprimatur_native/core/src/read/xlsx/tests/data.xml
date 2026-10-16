@@ -1,0 +1,9 @@
+<worksheet><sheetData>
+  <row>
+    <c t="s"><v>1</v></c><c t="inlineStr"><is><t>inline</t></is></c><c t="e"><v>#N/A</v></c>
+  </row>
+  <row r="3">
+    <c r="A3" s="1"><v>45000</v></c><c s="2"><v>1.5</v></c><c s="3"><v>0.75</v></c>
+    <c s="4"><v>0</v></c><c t="str"><f>A1</f><v>cached</v></c>
+  </row>
+</sheetData></worksheet>

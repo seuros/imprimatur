@@ -1,0 +1,4 @@
+<Relationships>
+  <Relationship Id="i" Target="../media/image1.gif"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"/>
+</Relationships>

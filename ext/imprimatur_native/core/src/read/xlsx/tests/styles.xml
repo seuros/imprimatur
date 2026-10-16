@@ -1,0 +1,11 @@
+<styleSheet>
+  <numFmts>
+    <numFmt numFmtId="200" formatCode="dd/mm/yyyy"/>
+    <numFmt numFmtId="201" formatCode="&quot;day&quot; 0.00"/>
+    <numFmt numFmtId="202" formatCode="[h]:mm"/>
+  </numFmts>
+  <cellStyleXfs><xf numFmtId="14"/></cellStyleXfs>
+  <cellXfs>
+    <xf numFmtId="0"/><xf numFmtId="200"/><xf numFmtId="201"/><xf numFmtId="202"/><xf numFmtId="14"/>
+  </cellXfs>
+</styleSheet>

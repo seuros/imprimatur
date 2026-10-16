@@ -1,0 +1,8 @@
+<Relationships>
+  <Relationship Id="s1" Target="/xl/worksheets/data.xml"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"/>
+  <Relationship Id="st" Target="styles.xml"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"/>
+  <Relationship Id="ss" Target="strings.xml"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"/>
+</Relationships>

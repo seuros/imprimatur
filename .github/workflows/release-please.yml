@@ -1,0 +1,34 @@
+name: release-please
+
+# Keeps a release PR open on master. Merging it tags vX.Y.Z and creates the
+# GitHub release; the gems are then built and attached to it. Publishing to
+# rubygems.org happens from a workstation: `rake gems:pull_all gems:push_all`.
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+
+  # A tag pushed with GITHUB_TOKEN starts no workflow, so the build is called
+  # from here rather than triggered by the tag.
+  gems:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write

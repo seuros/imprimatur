@@ -1,0 +1,188 @@
+name: Release gems
+
+# Builds the source gem and one precompiled gem per supported platform for a
+# release tag, installs each in a clean environment (the platform gems without
+# a toolchain), and attaches them to the GitHub release. release-please calls
+# it when a release is created; run it by hand to rebuild a release's gems.
+# `rake gems:pull_all gems:push_all` publishes them.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag to build, such as v0.2.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to build, such as v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  source:
+    name: source gem
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - uses: dtolnay/rust-toolchain@1.99
+      - run: mkdir -p pkg && gem build imprimatur.gemspec --output "pkg/imprimatur-$(ruby -Ilib -rimprimatur/version -e 'print Imprimatur::VERSION').gem"
+      - name: Compiles on install and loads
+        run: |
+          gem install --local --no-document pkg/imprimatur-*.gem
+          cd /tmp && ruby -rimprimatur -e 'Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gem-source
+          path: pkg/*.gem
+          if-no-files-found: error
+
+  # The extension needs glibc 2.34 (its newest symbol), not trixie's 2.41.
+  # Alpine builds the musl gems.
+  linux:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: x86_64-linux-gnu, runner: ubuntu-latest, image: "ruby:4.0-trixie" }
+          - { platform: aarch64-linux-gnu, runner: ubuntu-26.04-arm, image: "ruby:4.0-trixie" }
+          - { platform: x86_64-linux-musl, runner: ubuntu-latest, image: "ruby:4.0-alpine" }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: seuros/setup-upkg@master
+      - name: Build
+        run: sh tools/build_native_gem.sh ${{ matrix.platform }}
+      - name: Installs without a toolchain and loads
+        run: |
+          mv "$HOME/.cargo" "$HOME/.cargo.off"
+          gem install --local --no-document pkg/imprimatur-*-${{ matrix.platform }}.gem
+          cd /tmp && ruby -rimprimatur -e 'Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gem-${{ matrix.platform }}
+          path: pkg/*-${{ matrix.platform }}.gem
+          if-no-files-found: error
+
+  # GitHub runs JavaScript actions (checkout, upload-artifact) in Alpine
+  # containers on x64 only, so this one builds through docker run; the build
+  # script installs upkg itself.
+  linux-arm64-musl:
+    name: aarch64-linux-musl
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Build
+        run: docker run --rm -v "$PWD:/src" -w /src ruby:4.0-alpine tools/build_native_gem.sh aarch64-linux-musl
+      - name: Installs without a toolchain and loads
+        run: |
+          docker run --rm -v "$PWD/pkg:/pkg:ro" ruby:4.0-alpine sh -c '
+            gem install --local --no-document /pkg/imprimatur-*-aarch64-linux-musl.gem && cd /tmp &&
+            ruby -rimprimatur -e "Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }"'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gem-aarch64-linux-musl
+          path: pkg/*-aarch64-linux-musl.gem
+          if-no-files-found: error
+
+  macos:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: arm64-darwin, runner: macos-latest }
+          - { platform: x86_64-darwin, runner: macos-26-intel }
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - uses: dtolnay/rust-toolchain@1.99
+      - run: bundle exec rake "gems:native[${{ matrix.platform }}]"
+      - name: Installs without a compiler and loads
+        run: |
+          GEM_HOME="$(mktemp -d)"
+          export GEM_HOME GEM_PATH=
+          PATH="$(dirname "$(which ruby)"):/usr/bin:/bin" gem install --local --no-document pkg/imprimatur-*-${{ matrix.platform }}.gem
+          cd /tmp && ruby -rimprimatur -e 'Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gem-${{ matrix.platform }}
+          path: pkg/*-${{ matrix.platform }}.gem
+          if-no-files-found: error
+
+  freebsd:
+    name: FreeBSD 15.1
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.1"
+          usesh: true
+          copyback: true
+          prepare: |
+            fetch -qo /tmp/upkg-install.sh https://raw.githubusercontent.com/seuros/upkg/master/install.sh
+            sh /tmp/upkg-install.sh
+            upkg install ruby40 git curl llvm gmake
+            printf '%s\n' '#!/bin/sh' 'exec ruby40 -e "require %q(rubygems/gem_runner); Gem::GemRunner.new.run(ARGV)" -- "$@"' > /usr/local/bin/gem
+            chmod +x /usr/local/bin/gem
+            ln -sf ruby40 /usr/local/bin/ruby
+            curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.99
+          run: |
+            . "$HOME/.cargo/env"
+            LIBCLANG_PATH="$(ls -d /usr/local/llvm*/lib | sort -V | tail -1)"
+            export LIBCLANG_PATH
+            gem install bundler --no-document
+            bundle install
+            bundle exec rake gems:native
+            mv "$HOME/.cargo" "$HOME/.cargo.off"
+            gem install --local --no-document pkg/imprimatur-*-freebsd-*.gem
+            cd /tmp && ruby -rimprimatur -e 'Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gem-freebsd
+          path: pkg/*-freebsd-*.gem
+          if-no-files-found: error
+
+  # Upload only: the release exists already, and editing it with GITHUB_TOKEN
+  # is refused when the run's workflow files differ from the tag's.
+  attach:
+    needs: [source, linux, linux-arm64-musl, macos, freebsd]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: gems
+          merge-multiple: true
+      - run: ls -l gems
+      - name: Attach the gems to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" gems/*.gem --clobber --repo "$GITHUB_REPOSITORY"

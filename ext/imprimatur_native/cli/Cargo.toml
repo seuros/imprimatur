@@ -1,0 +1,30 @@
+[package]
+name = "imprimatur-cli"
+version = "0.1.0"
+description = "Read PDF, XLSX and DOCX documents as Markdown, from the command line."
+keywords = ["pdf", "xlsx", "docx", "markdown", "cli"]
+categories = ["command-line-utilities", "text-processing"]
+readme = "README.md"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "imprimatur"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+imprimatur = { workspace = true, features = ["json"] }
+regex.workspace = true
+serde_json.workspace = true
+usage-rs = { workspace = true, features = ["completions"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+usage-parser.workspace = true
+usage-rs = { workspace = true, features = ["completions", "test"] }

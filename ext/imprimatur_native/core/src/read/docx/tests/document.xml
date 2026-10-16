@@ -1,0 +1,53 @@
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body>
+  <w:p><w:pPr><w:pStyle w:val="Titre"/></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>
+  <w:p>
+    <w:pPr><w:pStyle w:val="Sub"/><w:rPr><w:b/></w:rPr></w:pPr>
+    <w:r><w:t xml:space="preserve">Inherited  </w:t></w:r><w:r><w:br/><w:t>heading</w:t></w:r>
+  </w:p>
+  <w:p><w:pPr><w:outlineLvl w:val="2"/></w:pPr><w:r><w:t>Outline</w:t></w:r></w:p>
+  <w:p><w:pPr><w:pStyle w:val="Bullets"/></w:pPr><w:r><w:t>first</w:t></w:r></w:p>
+  <w:p>
+    <w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr>
+    <w:r><w:t>nested</w:t></w:r><w:r><w:br/><w:t>wrapped</w:t></w:r>
+  </w:p>
+  <w:p>
+    <w:pPr><w:pStyle w:val="Bullets"/><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr>
+    <w:r><w:t>not a list</w:t></w:r>
+  </w:p>
+  <w:p>
+    <w:r><w:rPr><w:b/><w:i/></w:rPr><w:t xml:space="preserve">both </w:t></w:r>
+    <w:r><w:rPr><w:b w:val="0"/></w:rPr><w:t>plain</w:t></w:r>
+    <w:hyperlink r:id="link"><w:r><w:t xml:space="preserve"> link</w:t></w:r></w:hyperlink>
+    <w:del><w:r><w:delText>gone</w:delText></w:r></w:del>
+    <w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText>PAGE</w:instrText></w:r>
+    <w:r><w:t>7</w:t></w:r>
+  </w:p>
+  <w:p/>
+  <w:p><w:r>
+    <mc:AlternateContent>
+      <mc:Choice><w:drawing><w:txbxContent>
+        <w:p><w:r><w:t>boxed</w:t></w:r></w:p>
+      </w:txbxContent></w:drawing></mc:Choice>
+      <mc:Fallback><w:pict><w:txbxContent>
+        <w:p><w:r><w:t>boxed</w:t></w:r></w:p>
+      </w:txbxContent></w:pict></mc:Fallback>
+    </mc:AlternateContent>
+    <w:t>anchor</w:t>
+  </w:r></w:p>
+  <w:tbl>
+    <w:tblPr/>
+    <w:tr>
+      <w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>wide</w:t></w:r></w:p></w:tc>
+      <w:tc><w:p><w:r><w:t>c</w:t></w:r></w:p></w:tc>
+    </w:tr>
+    <w:tr>
+      <w:tc><w:p><w:r><w:t>a|1</w:t></w:r></w:p><w:p><w:r><w:t>second</w:t></w:r></w:p></w:tc>
+      <w:tc><w:p/></w:tc>
+      <w:tc><w:p><w:r><w:t>z</w:t></w:r></w:p></w:tc>
+    </w:tr>
+  </w:tbl>
+  <w:sectPr><w:t>section</w:t></w:sectPr>
+</w:body>
+</w:document>

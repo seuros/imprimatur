@@ -1,0 +1,33 @@
+[package]
+name = "imprimatur"
+version = "0.1.0"
+description = "XLSX, PDF and DOCX authoring with its own XML, zip and PDF writers."
+keywords = ["xlsx", "excel", "pdf", "docx", "spreadsheet"]
+categories = ["encoding", "text-processing"]
+readme = "README.md"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+include = ["src/**/*.rs", "src/**/*.txt", "src/**/tests/*.pdf", "src/**/tests/*.xml", "src/**/tests/*.rels", "README.md", "LICENSE*"]
+
+[lints]
+workspace = true
+
+[dependencies]
+aes = "0.9.3"
+crc32fast = "1.5.2"
+md-5 = "0.11.0"
+miniz_oxide = "0.9.1"
+serde_json = { version = "1.0.154", optional = true }
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+
+[features]
+# `read::json`: content and images as JSON, the schema the command line and
+# the Ruby binding share.
+json = ["dep:serde_json"]
+
+[dev-dependencies]
+zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }

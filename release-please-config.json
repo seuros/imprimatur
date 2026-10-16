@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "release-type": "ruby",
+      "package-name": "imprimatur",
+      "bump-minor-pre-major": true,
+      "version-file": "lib/imprimatur/version.rb",
+      "extra-files": [
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies.imprimatur.version" },
+        { "type": "toml", "path": "ext/imprimatur_native/core/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "ext/imprimatur_native/ffi/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "ext/imprimatur_native/cli/Cargo.toml", "jsonpath": "$.package.version" },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value == 'imprimatur' || @.name.value == 'imprimatur-cli' || @.name.value == 'imprimatur_native')].version"
+        }
+      ]
+    }
+  }
+}

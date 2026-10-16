@@ -1,0 +1,8 @@
+<Relationships>
+  <Relationship Id="s" Target="styles.xml"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"/>
+  <Relationship Id="n" Target="numbering.xml"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"/>
+  <Relationship Id="link" Target="https://example.com/a_b" TargetMode="External"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"/>
+</Relationships>

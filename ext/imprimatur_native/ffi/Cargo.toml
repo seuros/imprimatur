@@ -1,0 +1,21 @@
+[package]
+name = "imprimatur_native"
+version = "0.1.0"
+description = "Ruby bindings for the imprimatur crate"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+imprimatur = { workspace = true, features = ["json"] }
+serde_json.workspace = true
+magnus.workspace = true
+rb-sys.workspace = true

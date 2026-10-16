@@ -1,0 +1,4 @@
+<Relationships>
+  <Relationship Id="d" Target="../drawings/drawing1.xml"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"/>
+</Relationships>
