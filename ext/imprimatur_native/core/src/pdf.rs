@@ -1,6 +1,7 @@
 //! PDF output: the document laid out with the standard Helvetica fonts
 //! (`WinAnsiEncoding`, so Windows-1252 text), written with our own object
-//! writer. Embedded TrueType fonts, and with them every other script, come next.
+//! writer. `truetype` serializes embedded font resources; connecting these to
+//! document layout, shaping and bidirectional text comes next.
 
 mod font;
 mod layout;
@@ -10,6 +11,12 @@ mod objects;
 mod picture;
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "fonts")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "font resources are connected to document layout in a follow-up")
+)]
+mod truetype;
 
 use std::fmt;
 use std::io::Write;
