@@ -3,16 +3,18 @@
 module Imprimatur
   # Keyword handling only; parsing, limits and rendering live in the native core.
   module PdfReader
-    def self.info(document, max_bytes: nil, **limits)
-      JSON.parse(Native.pdf_info(Reader.read(document, max_bytes), Reader.limits(max_bytes:, **limits)),
+    def self.info(document, memory_bytes: 1024 * 1024 * 1024, max_bytes: nil, **limits)
+      JSON.parse(Native.pdf_info(Reader.read(document, max_bytes), Reader.limits(max_bytes:, **limits),
+                                 RENDER_WORKER, memory_bytes),
                  symbolize_names: true)
     end
 
     def self.pages(document, first_page: 1, last_page: 0xFFFFFFFF, max_pages: 500,
                    max_page_bytes: 256 * 1024, max_output_bytes: 8 * 1024 * 1024,
-                   max_bytes: nil, **limits)
+                   memory_bytes: 1024 * 1024 * 1024, max_bytes: nil, **limits)
       options = [first_page, last_page, max_pages, max_page_bytes, max_output_bytes]
-      JSON.parse(Native.pdf_pages(Reader.read(document, max_bytes), Reader.limits(max_bytes:, **limits), options),
+      JSON.parse(Native.pdf_pages(Reader.read(document, max_bytes), Reader.limits(max_bytes:, **limits),
+                                  options, RENDER_WORKER, memory_bytes),
                  symbolize_names: true)
     end
 

@@ -526,6 +526,7 @@ dependencies = [
  "nix",
  "qrcode",
  "read-fonts 0.45.1",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",

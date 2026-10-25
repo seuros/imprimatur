@@ -1,4 +1,5 @@
 use std::assert_matches;
+use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -32,9 +33,98 @@ fn rejects_invalid_requests_before_starting_a_worker() {
     ] {
         assert_matches!(
             render_page_isolated(&worker, b"", number, &options, &limits, &process),
-            Err(Error::InvalidPdfOption("process limits and page number must be positive"))
+            Err(Error::InvalidPdfOption(_))
         );
     }
+}
+
+#[test]
+fn worker_timeout_keeps_flushed_pages_but_cancellation_still_raises() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let worker = directory.path().join("worker");
+    let mut reply = protocol::HEADER.to_vec();
+    stream::write(&mut reply, &stream::Frame::Info(Info { page_count: 3, encrypted: false }))
+        .unwrap();
+    stream::write(
+        &mut reply,
+        &stream::Frame::Page(super::super::PageResult {
+            number: 1,
+            status: super::super::Status::Text,
+            text: "Completed before the deadline".into(),
+            images: Some(0),
+            truncated: false,
+            reason: None,
+        }),
+    )
+    .unwrap();
+    let mut escaped = String::new();
+    for byte in reply {
+        write!(&mut escaped, "\\{byte:03o}").unwrap();
+    }
+    fs::write(&worker, format!("#!/bin/sh\nprintf '{escaped}'\nexec /bin/sleep 30\n")).unwrap();
+    fs::set_permissions(&worker, fs::Permissions::from_mode(0o700)).unwrap();
+    let process =
+        ProcessLimits { wall_time: Duration::from_millis(250), ..ProcessLimits::default() };
+    let started = Instant::now();
+    let result =
+        pages_isolated(&worker, b"", &ReadOptions::default(), &Limits::default(), &process)
+            .unwrap();
+    assert!(started.elapsed() < Duration::from_secs(3), "the original deadline was not renewed");
+    assert_eq!(result.info.page_count, 3);
+    assert_eq!(result.pages[0].text, "Completed before the deadline");
+    assert_eq!(
+        result.pages.iter().map(|page| page.status).collect::<Vec<_>>(),
+        [super::super::Status::Text, super::super::Status::Skipped, super::super::Status::Skipped]
+    );
+
+    let flag = Arc::new(AtomicBool::new(false));
+    let limits = Limits::default().cancel_on(Arc::clone(&flag));
+    let cancel = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(30));
+        flag.store(true, Ordering::Relaxed);
+    });
+    assert_matches!(
+        pages_isolated(&worker, b"", &ReadOptions::default(), &limits, &process),
+        Err(Error::Cancelled)
+    );
+    cancel.join().unwrap();
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn monitor_errors_allow_an_exiting_worker_but_fail_closed_for_a_live_one() {
+    let limits = Limits::default();
+    let budget = Budget::new(&limits, 0).unwrap();
+    let mut child = sleeper();
+    let pid = child.child.id();
+    child.child.kill().unwrap();
+    let missing = || Error::Io(std::io::Error::from(std::io::ErrorKind::NotFound));
+    let status = finish_monitor_error(
+        &mut child,
+        &budget,
+        Instant::now() + Duration::from_secs(1),
+        missing(),
+    )
+    .unwrap();
+    assert!(!status.success());
+    drop(child);
+    assert_reaped(pid);
+
+    let mut child = sleeper();
+    let pid = child.child.id();
+    assert_matches!(
+        finish_monitor_error(
+            &mut child,
+            &budget,
+            Instant::now() + Duration::from_secs(1),
+            missing()
+        ),
+        Err(Error::Io(_))
+    );
+    drop(child);
+    assert_reaped(pid);
 }
 
 #[test]

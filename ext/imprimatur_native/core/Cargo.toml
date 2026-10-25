@@ -33,6 +33,7 @@ md-5.workspace = true
 miniz_oxide.workspace = true
 qrcode.workspace = true
 read-fonts = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 sha2.workspace = true
 thiserror.workspace = true
@@ -51,7 +52,7 @@ archive = ["dep:zip"]
 fonts = ["dep:read-fonts"]
 # Pure-Rust full-page PDF rasterization; readers and writers remain independent.
 render = ["dep:hayro"]
-isolation = ["render", "dep:tempfile", "dep:nix", "dep:libproc"]
+isolation = ["render", "json", "dep:serde", "dep:tempfile", "dep:nix", "dep:libproc"]
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, optional = true }

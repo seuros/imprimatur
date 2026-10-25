@@ -11,10 +11,15 @@ states and UTF-8-safe text limits. `read::pdf::render_page`, under the optional
 `render` feature, rasterizes a full page through Hayro (pure Rust).
 That raw API is not preemptible. For untrusted documents, enable `isolation`,
 build the `imprimatur-render-worker` binary and pass its absolute path to
-`read::pdf::isolation::render_page_isolated`. Rust supervises finite wall/CPU,
+`read::pdf::isolation::{info_isolated, pages_isolated, render_page_isolated}`.
+Rust supervises finite wall/CPU,
 memory and file-output limits, killing and reaping failed/cancelled workers.
 Linux/FreeBSD enforce address-space limits; macOS samples RSS and can briefly
 overshoot. This is resource containment, not a filesystem/network sandbox.
+Isolated page reads flush completed records, retain them on worker termination,
+and recover healthy neighbors after page-local decompression failures. Recovery
+attempts renew only the individual decompression allowance, never the overall
+deadline, process-memory limit or aggregate text cap.
 
 ```rust
 use imprimatur::xlsx::{Cell, Color, DateTime, Format, Workbook};

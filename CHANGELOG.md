@@ -2,11 +2,14 @@
 
 ## Unreleased
 
-- Add native PDF metadata, bounded page reads with explicit failure states,
-  and optional pure-Rust full-page PNG rendering.
-- Keep scanned and blank page structure available without a text layer.
-- Render PDFs through a bundled Rust worker with time, memory and output limits;
-  cancellation kills and reaps it. macOS uses an RSS watchdog, not a hard cap.
+- Isolate PDF metadata and text reads in the bundled resource-limited Rust
+  worker, as rendering already is; all three accept `memory_bytes:`.
+- On Linux/FreeBSD, re-exec the worker under its address-space limit before
+  reading the PDF, including tiny metadata-only reads.
+- Preserve completed pages on worker termination and recover healthy neighbors
+  after page-local stream limits without renewing the overall deadline.
+- Allow a bounded exit grace when macOS cannot inspect an exiting worker;
+  persistent monitor failures still terminate and reap a live worker.
 
 ## [0.6.0](https://github.com/seuros/imprimatur/compare/v0.5.0...v0.6.0) (2026-10-25)
 

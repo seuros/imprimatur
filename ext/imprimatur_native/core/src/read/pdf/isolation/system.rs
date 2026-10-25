@@ -28,6 +28,33 @@ pub(super) fn apply_limits(memory: u64, cpu: u64, output: u64) -> Result<()> {
     Ok(())
 }
 
+/// Replace the bootstrap after setting address-space limits, so the loader
+/// and parser cannot reuse memory mapped before the cap was installed.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+pub(super) fn reexec(arguments: &[std::ffi::OsString]) -> Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let string = |value: &[u8]| {
+        CString::new(value)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+    };
+    let executable = string(std::env::current_exe()?.as_os_str().as_bytes())?;
+    let mut args = vec![executable.clone(), string(b"1")?];
+    for argument in arguments.iter().skip(1) {
+        args.push(string(argument.as_os_str().as_bytes())?);
+    }
+    match nix::unistd::execv(&executable, &args) {
+        Ok(never) => match never {},
+        // A tiny address-space cap can prevent exec from allocating its
+        // argument/environment pages and surface as E2BIG rather than ENOMEM.
+        Err(Errno::ENOMEM | Errno::E2BIG) => {
+            Err(Error::LimitExceeded("PDF worker startup resources"))
+        }
+        Err(error) => Err(std::io::Error::from(error).into()),
+    }
+}
+
 fn lower(resource: Resource, value: u64) -> Result<()> {
     let (soft, hard) = getrlimit(resource).map_err(std::io::Error::from)?;
     let value = bounded_limit(value, soft, hard)?;
