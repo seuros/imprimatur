@@ -362,20 +362,31 @@ before allocation (`max_pixels:`, 4 million) and encoded output
 (`max_output_bytes:`, 8 MiB). Preflight rejects pages drawing more than 40 million
 source-image pixels. Renderer warnings fail instead of silently dropping content.
 The crate exposes `read::pdf::{info, pages, render_page}` (`render` feature) and
-`read::pdf::isolation::render_page_isolated` (`isolation` feature). The latter
-takes an absolute path to the trusted `imprimatur-render-worker` executable.
-The gem bundles that worker and always uses isolated rendering; it never falls
-back to an in-process render or searches PATH.
+`read::pdf::isolation::{info_isolated, pages_isolated, render_page_isolated}`
+(`isolation` feature). These take an absolute path to the trusted
+`imprimatur-render-worker` executable. The gem bundles that worker and always
+isolates all three PDF operations; it never falls back to in-process parsing
+or searches PATH.
 
-All three accept the normal read limits. Rendering also accepts `memory_bytes:`
+All three accept the normal read limits and `memory_bytes:`
 (1 GiB by default): Linux/FreeBSD enforce an address-space cap; macOS uses a
 sampled RSS watchdog, which can briefly overshoot. A worker is killed and reaped
-on timeout, cancellation or supervisor failure. Rendering has a mandatory
+on timeout, cancellation or supervisor failure. Each operation has a mandatory
 60-second process ceiling even with `timeout: nil`; a shorter `timeout:` still
 applies. CPU time, output files and core dumps are also limited.
 
+The page worker flushes completed records as it goes. An exhausted stream
+budget triggers individual-page recovery inside that worker: each attempt has
+its own `max_inflated` allowance, while the original overall deadline, process
+memory limit and aggregate text cap remain in force. An oversized page is
+`failed`, not blank, without discarding healthy neighbors. A worker terminated
+after metadata was read preserves completed pages and explicitly marks the
+unreached pages; an expired overall deadline marks them `skipped`. Cancellation
+still raises rather than returning a partial successful call.
+
 This is resource containment, **not a filesystem/network security sandbox**.
-The raw crate `render_page` remains in-process and cannot interrupt Hayro.
+The raw crate `info`, `pages` and `render_page` APIs remain in-process;
+`render_page` cannot interrupt Hayro.
 `max_inflated` bounds our preflight, not Hayro's internal decoders.
 
 ```ruby

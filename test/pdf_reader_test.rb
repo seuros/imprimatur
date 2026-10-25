@@ -28,4 +28,23 @@ class PdfReaderTest < Minitest::Test
     # The host stays usable after worker termination.
     assert_equal 2, Imprimatur.pdf_info(pdf)[:page_count]
   end
+
+  def test_a_thrown_stream_limit_keeps_healthy_neighbors
+    pdf = Imprimatur.pdf do |doc|
+      doc.paragraph('Healthy first page')
+      doc.page_break
+      doc.paragraph('x' * 2000)
+      doc.page_break
+      doc.paragraph('Healthy last page')
+    end
+
+    result = Imprimatur.pdf_pages(pdf, max_inflated: 1024)
+    assert_equal 3, result[:page_count]
+    assert_equal %w[text failed text], result[:pages].map { it[:status] }
+    assert_equal ['Healthy first page', 'Healthy last page'],
+                 result[:pages].values_at(0, 2).map { it[:text] }
+    assert_includes result[:pages][1][:reason], 'limit'
+    assert_raises(ArgumentError) { Imprimatur.pdf_info(pdf, memory_bytes: 0) }
+    assert_raises(ArgumentError) { Imprimatur.pdf_pages(pdf, memory_bytes: 0) }
+  end
 end

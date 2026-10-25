@@ -1,7 +1,8 @@
-//! Render in a separate, resource-limited process. No untrusted PDF parsing
+//! Read and render in a resource-limited process. No untrusted PDF parsing
 //! occurs in the supervisor.
 
 mod protocol;
+mod stream;
 mod system;
 #[cfg(test)]
 mod tests;
@@ -14,10 +15,46 @@ use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use super::RenderOptions;
+use super::{Info, Pages, ReadOptions, RenderOptions};
 use crate::read::{Budget, Image, Limits};
 use crate::{Error, Result};
 pub use worker::worker_main;
+
+/// Inspects a PDF in the trusted, resource-limited worker.
+///
+/// # Errors
+/// Invalid options, worker errors, or exceeded input, memory or time limits.
+pub fn info_isolated(
+    worker: &Path,
+    data: &[u8],
+    limits: &Limits,
+    process: &ProcessLimits,
+) -> Result<Info> {
+    let output = invoke(worker, data, protocol::Operation::Info, limits, process)?;
+    let bytes = output.complete(protocol::MAX_ERROR_BYTES)?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| Error::malformed("PDF worker", error.to_string()))
+}
+
+/// Reads PDF pages in the worker, retaining completed records on resource failure.
+///
+/// Page-local stream limits trigger bounded individual recovery.
+/// All attempts share one external wall-clock and process-memory limit.
+///
+/// # Errors
+/// As [`info_isolated`], and cancellation or an invalid worker reply.
+/// A failure before page metadata is available remains a document error.
+pub fn pages_isolated(
+    worker: &Path,
+    data: &[u8],
+    options: &ReadOptions,
+    limits: &Limits,
+    process: &ProcessLimits,
+) -> Result<Pages> {
+    let output =
+        invoke(worker, data, protocol::Operation::Pages(options.clone()), limits, process)?;
+    stream::decode(output, options)
+}
 
 /// Mandatory process limits, in addition to the reader/render limits.
 #[derive(Debug, Clone)]
@@ -51,6 +88,44 @@ pub fn render_page_isolated(
     limits: &Limits,
     process: &ProcessLimits,
 ) -> Result<Image> {
+    let output = invoke(
+        worker,
+        data,
+        protocol::Operation::Render(number, options.clone()),
+        limits,
+        process,
+    )?;
+    let data = output.complete(options.max_output_bytes)?;
+    // The trusted worker writes only PNG; reject malformed/empty replies too.
+    if !data.starts_with(b"\x89PNG\r\n\x1a\n") || data.len() < 26 {
+        return Err(Error::malformed("PDF worker", "invalid PNG response"));
+    }
+    let dimension = |at| u32::from_be_bytes(data[at..at + 4].try_into().unwrap_or([0; 4]));
+    let (width, height) = (dimension(16), dimension(20));
+    options.image(data, number, (width, height))
+}
+
+struct Output {
+    data: Vec<u8>,
+    failure: Option<Error>,
+}
+
+impl Output {
+    fn complete(self, maximum: usize) -> Result<Vec<u8>> {
+        if let Some(error) = self.failure {
+            return Err(error);
+        }
+        protocol::decode(self.data, maximum)
+    }
+}
+
+fn invoke(
+    worker: &Path,
+    data: &[u8],
+    operation: protocol::Operation,
+    limits: &Limits,
+    process: &ProcessLimits,
+) -> Result<Output> {
     let budget = Budget::new(limits, data.len())?;
     budget.check()?;
     let deadline = Instant::now()
@@ -59,10 +134,12 @@ pub fn render_page_isolated(
     if !worker.is_absolute() || !worker.is_file() {
         return Err(Error::InvalidPdfOption("an absolute path to the render worker is required"));
     }
-    if process.memory_bytes == 0 || process.wall_time.is_zero() || number == 0 {
-        return Err(Error::InvalidPdfOption("process limits and page number must be positive"));
+    if process.memory_bytes == 0 || process.wall_time.is_zero() {
+        return Err(Error::InvalidPdfOption("process limits must be positive"));
     }
-    let request = protocol::Request::new(number, options, limits, process)?;
+    let request = protocol::Request::new(operation, limits, process)?;
+    let maximum = u64::try_from(request.operation.maximum()?)
+        .map_err(|_| Error::InvalidPdfOption("worker output limit is too large"))?;
     let directory = tempfile::tempdir()?;
     let input_path = directory.path().join("input.pdf");
     File::create(&input_path)?.write_all(data)?;
@@ -77,30 +154,20 @@ pub fn render_page_isolated(
         .process_group(0)
         .spawn()?;
     let mut child = Running { child, finished: false };
-    let status = supervise(&mut child, &budget, deadline, process.memory_bytes)?;
-    if !status.success() {
-        return Err(Error::LimitExceeded("render worker resources"));
-    }
-    let maximum = options
-        .max_output_bytes
-        .max(protocol::MAX_ERROR_BYTES)
-        .checked_add(protocol::HEADER.len())
-        .ok_or(Error::InvalidPdfOption("output limit is too large"))?;
-    let maximum = u64::try_from(maximum).unwrap_or(u64::MAX);
+    let failure = match supervise(&mut child, &budget, deadline, process.memory_bytes) {
+        Ok(status) if status.success() => check_finished(&budget, deadline).err(),
+        Ok(_) => Some(Error::LimitExceeded("PDF worker resources")),
+        Err(Error::Cancelled) => return Err(Error::Cancelled),
+        Err(error) => Some(error),
+    };
+    // Stop and reap an unfinished worker before inspecting its flushed output.
+    drop(child);
     if fs::metadata(&output_path)?.len() > maximum {
-        return Err(Error::LimitExceeded("render worker output"));
+        return Err(Error::LimitExceeded("PDF worker output"));
     }
     let mut output = Vec::new();
     File::open(output_path)?.take(maximum).read_to_end(&mut output)?;
-    check_finished(&budget, deadline)?;
-    let data = protocol::decode(output, options.max_output_bytes)?;
-    // The trusted worker writes only PNG; also reject malformed/empty replies.
-    if !data.starts_with(b"\x89PNG\r\n\x1a\n") || data.len() < 26 {
-        return Err(Error::malformed("render worker", "invalid PNG response"));
-    }
-    let dimension = |at| u32::from_be_bytes(data[at..at + 4].try_into().unwrap_or([0; 4]));
-    let (width, height) = (dimension(16), dimension(20));
-    options.image(data, number, (width, height))
+    Ok(Output { data: output, failure })
 }
 
 fn check(budget: &Budget<'_>, deadline: Instant) -> Result<()> {
@@ -155,10 +222,32 @@ fn supervise(
         check(budget, deadline)?;
         #[cfg(target_os = "macos")]
         if let Err(error) = system::check_memory(child.child.id(), memory) {
-            // It may have exited between try_wait and the memory query.
-            if let Some(status) = child.poll()? {
-                return Ok(status);
+            if matches!(error, Error::Io(_)) {
+                return finish_monitor_error(child, budget, deadline, error);
             }
+            return Err(error);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn finish_monitor_error(
+    child: &mut Running,
+    budget: &Budget<'_>,
+    deadline: Instant,
+    error: Error,
+) -> Result<ExitStatus> {
+    // proc_pidinfo can stop seeing an exiting task before waitpid can reap it.
+    // Never bypass monitoring for a live worker: allow only a bounded exit
+    // grace, still respecting cancellation and the original overall deadline.
+    let grace = Instant::now() + Duration::from_millis(50);
+    loop {
+        if let Some(status) = child.poll()? {
+            return Ok(status);
+        }
+        check(budget, deadline)?;
+        if Instant::now() >= grace {
             return Err(error);
         }
         std::thread::sleep(Duration::from_millis(5));
