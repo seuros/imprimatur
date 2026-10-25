@@ -8,6 +8,19 @@
 - Render PDFs through a bundled Rust worker with time, memory and output limits;
   cancellation kills and reaps it. macOS uses an RSS watchdog, not a hard cap.
 
+## [0.6.0](https://github.com/seuros/imprimatur/compare/v0.5.0...v0.6.0) (2026-10-25)
+
+
+### Features
+
+* bound PDF reads and rendering; deduplicate Rust ([420e096](https://github.com/seuros/imprimatur/commit/420e096591ef08190427c7b090840dcd761010b4))
+* **doc:** set the body font size ([44f7617](https://github.com/seuros/imprimatur/commit/44f76170fd1ad29f143c1ef22c355fd1c1cbf8e1))
+
+
+### Bug Fixes
+
+* enforce render limits across Unix platforms ([5c7f0ba](https://github.com/seuros/imprimatur/commit/5c7f0bab2076681782c6bfa2de6062ad53c0e7f9))
+
 ## [0.5.0](https://github.com/seuros/imprimatur/compare/v0.4.0...v0.5.0) (2026-10-18)
 
 
