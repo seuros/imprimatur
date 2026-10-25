@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "imprimatur"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "aes",
  "crc32fast",
@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "imprimatur-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "imprimatur",
  "regex",
@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "imprimatur_native"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "imprimatur",
  "magnus",
