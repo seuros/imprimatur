@@ -46,7 +46,7 @@ fn real_worker_renders_and_enforces_limits_without_fallback() {
     );
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     {
-        let starved = ProcessLimits { memory_bytes: 1, ..process.clone() };
+        let starved = ProcessLimits { memory_bytes: 1, wall_time: process.wall_time };
         assert_matches!(
             info_isolated(worker, &data, &limits, &starved),
             Err(Error::LimitExceeded(_))

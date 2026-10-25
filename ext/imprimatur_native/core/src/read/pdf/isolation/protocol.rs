@@ -40,6 +40,7 @@ impl Operation {
 }
 
 pub(super) struct Request {
+    pub restricted: bool,
     pub operation: Operation,
     pub limits: Limits,
     pub memory: u64,
@@ -68,6 +69,7 @@ impl Request {
         u64::try_from(wall.as_nanos())
             .map_err(|_| Error::InvalidPdfOption("worker wall time is too large"))?;
         Ok(Self {
+            restricted: false,
             operation,
             limits: limits.clone().timeout(Some(wall)),
             memory: process.memory_bytes,
@@ -78,6 +80,7 @@ impl Request {
     pub fn arguments(&self) -> Vec<OsString> {
         let timeout = self.limits.timeout.unwrap_or_default();
         let mut values = vec![
+            u64::from(self.restricted),
             self.limits.max_input as u64,
             self.limits.max_inflated,
             self.limits.max_depth as u64,
@@ -113,9 +116,14 @@ impl Request {
             .skip(1)
             .map(|value| value.parse().map_err(|_| invalid()))
             .collect::<Result<_>>()?;
-        let [input, inflated, depth, memory, cpu, timeout, rest @ ..] = values.as_slice() else {
+        let [restricted, input, inflated, depth, memory, cpu, timeout, rest @ ..] =
+            values.as_slice()
+        else {
             return Err(invalid());
         };
+        if *restricted > 1 {
+            return Err(invalid());
+        }
         let length = |value| usize::try_from(value).map_err(|_| invalid());
         let operation = match rest {
             [0] => Operation::Info,
@@ -144,7 +152,8 @@ impl Request {
             .timeout(Some(Duration::from_nanos(*timeout)));
         let process =
             ProcessLimits { memory_bytes: *memory, wall_time: Duration::from_nanos(*timeout) };
-        let request = Self::new(operation, &limits, &process)?;
+        let mut request = Self::new(operation, &limits, &process)?;
+        request.restricted = *restricted == 1;
         if request.cpu_seconds != *cpu {
             return Err(invalid());
         }

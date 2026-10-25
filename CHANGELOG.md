@@ -4,6 +4,8 @@
 
 - Isolate PDF metadata and text reads in the bundled resource-limited Rust
   worker, as rendering already is; all three accept `memory_bytes:`.
+- On Linux/FreeBSD, re-exec the worker under its address-space limit before
+  reading the PDF, including tiny metadata-only reads.
 - Preserve completed pages on worker termination and recover healthy neighbors
   after page-local stream limits without renewing the overall deadline.
 - Allow a bounded exit grace when macOS cannot inspect an exiting worker;

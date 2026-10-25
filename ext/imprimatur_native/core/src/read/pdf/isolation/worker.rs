@@ -27,6 +27,10 @@ fn run(request: &Request, out: &mut impl Write) -> Result<()> {
     let output = u64::try_from(request.operation.maximum()?)
         .map_err(|_| Error::InvalidPdfOption("worker output limit is too large"))?;
     system::apply_limits(request.memory, request.cpu_seconds, output)?;
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    if !request.restricted {
+        system::reexec(&request.arguments())?;
+    }
     let maximum = u64::try_from(request.limits.max_input)
         .ok()
         .and_then(|value| value.checked_add(1))
