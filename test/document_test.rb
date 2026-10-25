@@ -57,15 +57,61 @@ class DocumentTest < Minitest::Test
     assert_includes parts.keys, 'word/footer1.xml'
   end
 
+  def test_sets_the_body_font_size_in_both_formats
+    [1, 10, 10.5, 409.5, 1638].each do |points|
+      doc = Imprimatur::Document.new(font_size: points)
+      doc.paragraph 'x'
+
+      assert_includes pdf_pages(doc.to_pdf).join, "/F1 #{points} Tf"
+      styles = ZipReader.entries(doc.to_docx)['word/styles.xml']
+      size = (points * 2).to_i
+
+      assert_includes styles, %(<w:sz w:val="#{size}"/><w:szCs w:val="#{size}"/>)
+    end
+  end
+
+  def test_body_font_size_defaults_to_eleven
+    default = Imprimatur::Document.new.paragraph('Body')
+    explicit = Imprimatur::Document.new(font_size: 11).paragraph('Body')
+    unset = Imprimatur::Document.new(font_size: nil).paragraph('Body')
+
+    assert_includes pdf_pages(default.to_pdf).first, '/F1 11 Tf'
+    assert_includes ZipReader.entries(default.to_docx)['word/styles.xml'], '<w:sz w:val="22"/><w:szCs w:val="22"/>'
+    assert_equal default.to_pdf, explicit.to_pdf
+    assert_equal default.to_docx, explicit.to_docx
+    assert_equal default.to_pdf, unset.to_pdf
+    assert_equal default.to_docx, unset.to_docx
+  end
+
+  def test_rejects_invalid_body_font_sizes
+    [-1, 0, 0.5, 10.25, 1638.5, Float::NAN, Float::INFINITY, -Float::INFINITY].each do |points|
+      error = assert_raises(Imprimatur::Error) { Imprimatur::Document.new(font_size: points) }
+
+      assert_match(/1 to 1638 points, in steps of 0\.5/, error.message)
+    end
+    assert_raises(ArgumentError) { Imprimatur::Document.new(font_size: 'large') }
+    assert_raises(TypeError) { Imprimatur::Document.new(font_size: Object.new) }
+  end
+
+  def test_block_builders_take_a_body_font_size
+    pdf = Imprimatur.pdf(font_size: 10) { it.paragraph 'Body' }
+    docx = Imprimatur.docx(font_size: 10.5) { it.paragraph 'مرحبا بالعالم' }
+
+    assert_includes pdf_pages(pdf).first, '/F1 10 Tf'
+    assert_includes ZipReader.entries(docx)['word/styles.xml'], '<w:sz w:val="21"/><w:szCs w:val="21"/>'
+  end
+
   def test_block_builders_save_and_return
     Dir.mktmpdir do |dir|
       pdf = File.join(dir, 'out.pdf')
       docx = File.join(dir, 'out.docx')
 
-      assert_equal pdf, Imprimatur.pdf(pdf, page_size: :letter) { it.paragraph 'Letter.' }
-      assert_equal docx, Imprimatur.docx(docx) { it.paragraph 'Word.' }
+      assert_equal pdf, Imprimatur.pdf(pdf, page_size: :letter, font_size: 10) { it.paragraph 'Letter.' }
+      assert_equal docx, Imprimatur.docx(docx, font_size: 10) { it.paragraph 'Word.' }
       assert_includes File.binread(pdf), '/MediaBox [0 0 612 792]'
+      assert_includes pdf_pages(File.binread(pdf)).first, '/F1 10 Tf'
       assert_includes ZipReader.entries(File.binread(docx))['word/document.xml'], 'Word.'
+      assert_includes ZipReader.entries(File.binread(docx))['word/styles.xml'], '<w:sz w:val="20"/><w:szCs w:val="20"/>'
     end
     assert Imprimatur.pdf { it.heading 'Bytes' }.start_with?('%PDF')
   end

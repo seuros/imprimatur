@@ -177,7 +177,7 @@ Not yet: merged cells, frozen panes, streaming for very large sheets.
 One document, two formats:
 
 ```ruby
-doc = Imprimatur::Document.new(page_size: :a4, page_numbers: true)
+doc = Imprimatur::Document.new(page_size: :a4, font_size: 10, page_numbers: true)
 doc.heading "Quarterly report"
 doc.heading "Sales", level: 2
 doc.paragraph do |p|
@@ -194,12 +194,14 @@ doc.paragraph "Appendix."
 doc.save_pdf("report.pdf")
 doc.save_docx("report.docx")
 
-Imprimatur.pdf("memo.pdf") { it.paragraph "Or in one go." }    # Imprimatur.docx alike
+Imprimatur.pdf("memo.pdf", font_size: 10) { it.paragraph "Or in one go." } # Imprimatur.docx alike
 Imprimatur.pdf(page_size: [200, 200], margin: 10) { it.image qr_png, width: 180 }
 ```
 
 - Headings 1 to 3 (real Word heading styles in DOCX), paragraphs of runs
   (bold, italic, underline, color), alignment, `\n` line breaks and tabs.
+- Body text at `font_size:` points (1 to 1638, in steps of 0.5; 11 unless
+  set), in both formats; headings keep their own sizes.
 - Tables: equal columns, borders, a shaded header row that repeats on every
   page; cells are converted with `to_s`.
 - Pictures: PNG or JPEG (a path, the bytes or an IO), at `width:` or

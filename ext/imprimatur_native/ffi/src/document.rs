@@ -66,6 +66,11 @@ impl NativeDocument {
         Ok(())
     }
 
+    fn set_font_size(ruby: &Ruby, rb_self: &Self, points: f64) -> Result<(), Error> {
+        borrow(ruby, &rb_self.0, "document")?.set_font_size(points).or_raise(ruby)?;
+        Ok(())
+    }
+
     /// A PNG or JPEG from its bytes, `width` and `height` in points.
     fn picture(
         ruby: &Ruby,
@@ -201,6 +206,7 @@ pub fn define(ruby: &Ruby, native: RModule) -> Result<(), Error> {
     class.define_method("set_page", method!(NativeDocument::set_page, 2))?;
     class.define_method("set_page_points", method!(NativeDocument::set_page_points, 3))?;
     class.define_method("set_margin", method!(NativeDocument::set_margin, 1))?;
+    class.define_method("set_font_size", method!(NativeDocument::set_font_size, 1))?;
     class.define_method("picture", method!(NativeDocument::picture, 4))?;
     class.define_method("barcode", method!(NativeDocument::barcode, 4))?;
     class.define_method("heading", method!(NativeDocument::heading, 2))?;

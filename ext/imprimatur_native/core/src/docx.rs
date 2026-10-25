@@ -50,7 +50,7 @@ pub fn write<W: Write>(document: &Document, out: W) -> Result<W> {
     zip.add("_rels/.rels", package.as_bytes())?;
     zip.add("word/document.xml", body(document, room, first_media, &pictures).as_bytes())?;
     zip.add("word/_rels/document.xml.rels", opc::relationships(&parts).as_bytes())?;
-    zip.add("word/styles.xml", styles().as_bytes())?;
+    zip.add("word/styles.xml", styles(document).as_bytes())?;
     if footer {
         zip.add("word/footer1.xml", page_number_footer().as_bytes())?;
     }
@@ -350,16 +350,17 @@ const HEADINGS: [(&str, &str, Option<&str>, &str); 3] = [
 ];
 
 /// `word/styles.xml`: Normal text, Heading 1-3 and a bordered table style,
-/// with a Calibri 11pt body.
-fn styles() -> String {
+/// with a Calibri body at the document's font size.
+fn styles(document: &Document) -> String {
     let mut xml = XmlWriter::new();
     xml.open("w:styles", &[("xmlns:w", W_NS)]);
     xml.open("w:docDefaults", &[]);
     xml.open("w:rPrDefault", &[]);
     xml.open("w:rPr", &[]);
     xml.empty("w:rFonts", &[("w:ascii", "Calibri"), ("w:hAnsi", "Calibri"), ("w:cs", "Arial")]);
-    xml.empty("w:sz", &[("w:val", "22")]);
-    xml.empty("w:szCs", &[("w:val", "22")]);
+    let size = (document.font_size() * 2.0).to_string();
+    xml.empty("w:sz", &[("w:val", &size)]);
+    xml.empty("w:szCs", &[("w:val", &size)]);
     xml.close("w:rPr");
     xml.close("w:rPrDefault");
     xml.open("w:pPrDefault", &[]);

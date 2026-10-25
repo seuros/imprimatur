@@ -38,6 +38,7 @@ book.save("budget.xlsx")?;          // or to_bytes(), or write_to(impl Write)
 use imprimatur::doc::{Document, Paragraph, Run, Table};
 
 let mut doc = Document::new();
+doc.set_font_size(10.0)?; // body text in points; 11 unless set
 doc.set_page_numbers(true);
 doc.heading(1, "Quarterly report")?;
 doc.push_paragraph(Paragraph::new().text("Revenue was ").run(Run::new("up 12%").bold()))?;

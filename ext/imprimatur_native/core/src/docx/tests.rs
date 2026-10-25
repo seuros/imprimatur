@@ -114,6 +114,22 @@ fn output_is_deterministic() {
 }
 
 #[test]
+fn sets_the_default_font_size_for_latin_and_complex_scripts() {
+    let mut doc = sample();
+    let original = parts(&doc);
+    let styles = part(&original, "word/styles.xml");
+    let default_size = r#"<w:sz w:val="22"/><w:szCs w:val="22"/>"#;
+    assert!(styles.contains(default_size), "{styles}");
+    for (points, half_points) in [(1.0, 2), (10.0, 20), (10.5, 21), (1638.0, 3276)] {
+        doc.set_font_size(points).unwrap();
+        let sized = parts(&doc);
+        let size = format!(r#"<w:sz w:val="{half_points}"/><w:szCs w:val="{half_points}"/>"#);
+        assert_eq!(part(&sized, "word/styles.xml"), styles.replacen(default_size, &size, 1));
+        assert_eq!(part(&sized, "word/document.xml"), part(&original, "word/document.xml"));
+    }
+}
+
+#[test]
 fn takes_direction_from_the_text() {
     let mut doc = Document::new();
     doc.heading(1, "تقرير المطابقة").unwrap();

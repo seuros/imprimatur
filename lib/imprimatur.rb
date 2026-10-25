@@ -46,7 +46,7 @@ module Imprimatur
     # Builds a {Document} and renders it as PDF. With a path, saves it there
     # and returns the path; without, returns the bytes.
     #
-    # @param options [Hash] +page_size:+ and +page_numbers:+, see {Document#initialize}
+    # @param options [Hash] +page_size:+, +margin:+, +font_size:+ and +page_numbers:+, see {Document#initialize}
     # @yieldparam document [Document]
     def pdf(path = nil, **options, &) = Document.build(:pdf, path, **options, &)
 

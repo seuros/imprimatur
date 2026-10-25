@@ -21,10 +21,11 @@ module Imprimatur
     # @param page_size [:a4, :letter, Array(Numeric, Numeric)] or its width
     #   and height in points, 36 to 1584 a side
     # @param margin [Numeric, nil] points on every side, one inch (72) unless set
+    # @param font_size [Numeric, nil] body text in points, 1 to 1638 in steps of 0.5; 11 unless set
     # @param page_numbers [Boolean] number pages "1 / N" in the footer
     # @raise [ArgumentError] an unknown page size
-    # @raise [Imprimatur::Error] a page size or margin out of range
-    def initialize(page_size: :a4, margin: nil, page_numbers: false)
+    # @raise [Imprimatur::Error] a page size, margin or font size out of range
+    def initialize(page_size: :a4, margin: nil, font_size: nil, page_numbers: false)
       @native = Native::Document.new
       numbers = page_numbers ? true : false
       if page_size.is_a?(Array)
@@ -34,6 +35,7 @@ module Imprimatur
         @native.set_page(page_size.to_s, numbers)
       end
       @native.set_margin(Float(margin)) if margin
+      @native.set_font_size(Float(font_size)) if font_size
     end
 
     # A PNG or JPEG in the flow, at +width+ or +height+ points (the other

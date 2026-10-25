@@ -44,6 +44,45 @@ fn validates_content() {
 }
 
 #[test]
+fn accepts_body_font_sizes_in_half_points() {
+    let mut doc = Document::new();
+    assert_eq!(doc.font_size(), 11.0);
+    assert_eq!(Document::default().font_size(), 11.0);
+    for points in [1.0, 10.0, 10.5, 11.0, 409.5, 1637.5, 1638.0] {
+        assert_eq!(doc.set_font_size(points).unwrap().font_size(), points);
+    }
+}
+
+#[test]
+fn rejects_invalid_body_font_sizes_without_changing_the_document() {
+    let mut doc = Document::new();
+    doc.set_font_size(10.0).unwrap();
+    for points in [-1.0, 0.0, 0.5, 10.25, 1638.5, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_matches!(
+            doc.set_font_size(points),
+            Err(Error::InvalidDocumentFontSize(_)),
+            "{points}"
+        );
+        assert_eq!(doc.font_size(), 10.0, "a rejected size leaves the old one intact");
+    }
+}
+
+#[test]
+fn an_explicit_default_font_size_keeps_the_same_output() {
+    let mut doc = Document::new();
+    doc.set_page_numbers(true);
+    doc.heading(1, "Title").unwrap();
+    doc.push_paragraph(Paragraph::new().text("Plain ").run(Run::new("bold").bold())).unwrap();
+    doc.table(Table::new([["Header"], ["Cell"]]).header()).unwrap();
+    doc.page_break().paragraph("The end.").unwrap();
+    let pdf = doc.to_pdf().unwrap();
+    let docx = doc.to_docx().unwrap();
+    doc.set_font_size(11.0).unwrap();
+    assert_eq!(doc.to_pdf().unwrap(), pdf);
+    assert_eq!(doc.to_docx().unwrap(), docx);
+}
+
+#[test]
 fn right_to_left_paragraphs_align_right_by_default() {
     let rtl = Paragraph::new().text("שלום").direction(TextDirection::RightToLeft);
     assert_eq!(rtl.effective_align(), Align::Right);

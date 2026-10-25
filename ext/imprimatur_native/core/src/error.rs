@@ -78,6 +78,9 @@ pub enum Error {
     #[error("margin {0} points is out of range (0 to 144), or leaves no room on the page")]
     InvalidMargin(f64),
 
+    #[error("document font size {0} is out of range (1 to 1638 points, in steps of 0.5)")]
+    InvalidDocumentFontSize(f64),
+
     #[error(
         "{character:?} (U+{code:04X}) cannot be written with the PDF standard font {font}: \
          only Windows-1252 (Latin) text is supported until embedded fonts land",

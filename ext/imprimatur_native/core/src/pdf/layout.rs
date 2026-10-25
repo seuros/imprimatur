@@ -13,7 +13,6 @@ use crate::style::{Align, Color};
 use crate::{Error, Result};
 use wrap::{Line, Look, wrap};
 
-const BODY_SIZE: f64 = 11.0;
 const TABLE_SIZE: f64 = 10.0;
 /// Line height as a multiple of the font size.
 const LEADING: f64 = 1.25;
@@ -31,6 +30,7 @@ pub struct Layout {
     width: f64,
     height: f64,
     margin: f64,
+    body_size: f64,
     pages: Vec<Vec<u8>>,
     /// The top of the free space on the current page, from the bottom edge.
     y: f64,
@@ -46,7 +46,15 @@ impl Layout {
         document.room()?;
         let (width, height) = document.page_size().points();
         let margin = document.margin();
-        Ok(Self { width, height, margin, pages: vec![Vec::new()], y: height - margin, blank: true })
+        Ok(Self {
+            width,
+            height,
+            margin,
+            body_size: document.font_size(),
+            pages: vec![Vec::new()],
+            y: height - margin,
+            blank: true,
+        })
     }
 
     pub const fn page_size(&self) -> (f64, f64) {
@@ -63,7 +71,7 @@ impl Layout {
         let look = Look { face: Face::Bold, color, underline: false };
         let lines = wrap(&[(Face::Bold.encode(text)?, look)], size, self.content_width());
         // Keep the heading with at least two lines of what follows.
-        let body_lines = 2.0 * BODY_SIZE * LEADING;
+        let body_lines = 2.0 * self.body_size * LEADING;
         let needed = (line_count(&lines) * size).mul_add(LEADING, before) + body_lines;
         self.ensure_room(needed);
         if !self.blank {
@@ -83,8 +91,8 @@ impl Layout {
                 Look { face, color: run.color, underline: run.underline },
             ));
         }
-        let lines = wrap(&runs, BODY_SIZE, self.content_width());
-        self.lines(&lines, BODY_SIZE, paragraph.effective_align());
+        let lines = wrap(&runs, self.body_size, self.content_width());
+        self.lines(&lines, self.body_size, paragraph.effective_align());
         self.y -= PARAGRAPH_GAP;
         Ok(())
     }

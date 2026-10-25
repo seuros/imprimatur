@@ -68,6 +68,36 @@ fn writes_a_valid_single_page() {
 }
 
 #[test]
+fn uses_the_body_font_size_for_every_run_style() {
+    let mut doc = Document::new();
+    doc.set_page_numbers(true);
+    for level in 1..=3 {
+        doc.heading(level, "Heading").unwrap();
+    }
+    doc.push_paragraph(
+        Paragraph::new()
+            .text("Plain ")
+            .run(Run::new("bold ").bold())
+            .run(Run::new("italic ").italic())
+            .run(Run::new("both").bold().italic().underline()),
+    )
+    .unwrap();
+    doc.table(Table::new([["Header"], ["Cell"]]).header()).unwrap();
+    // Page setup also applies to content added before it.
+    doc.set_font_size(10.5).unwrap();
+    let pages = pages(&doc.to_pdf().unwrap());
+    assert_eq!(pages.len(), 1);
+    let page = &pages[0];
+    for font in ["F1", "F2", "F3", "F4"] {
+        assert!(page.contains(&format!("/{font} 10.5 Tf")), "{page}");
+    }
+    for unchanged in ["/F2 20 Tf", "/F2 15 Tf", "/F2 12.5 Tf", "/F2 10 Tf", "/F1 10 Tf", "/F1 9 Tf"]
+    {
+        assert!(page.contains(unchanged), "{page}");
+    }
+}
+
+#[test]
 fn paginates_and_numbers_pages() {
     let mut doc = Document::new();
     doc.set_page_numbers(true);

@@ -112,6 +112,8 @@ pub struct Document {
     page_numbers: bool,
     /// Hundredths of a point; one inch when unset.
     margin: Option<u32>,
+    /// Half points; 11 points when unset.
+    font_size: Option<u16>,
 }
 
 impl Document {
@@ -143,6 +145,27 @@ impl Document {
     #[must_use]
     pub fn margin(&self) -> f64 {
         self.margin.map_or(72.0, |margin| f64::from(margin) / 100.0)
+    }
+
+    /// Body text size in points, 11 unless set.
+    ///
+    /// # Errors
+    /// [`Error::InvalidDocumentFontSize`] outside 1 to 1638, or between half points.
+    pub fn set_font_size(&mut self, points: f64) -> Result<&mut Self> {
+        let half_points = points * 2.0;
+        let valid = (1.0..=1638.0).contains(&points) && half_points.fract() == 0.0;
+        valid.ok_or(Error::InvalidDocumentFontSize(points))?;
+        #[expect(clippy::cast_possible_truncation, reason = "a whole number from 2 to 3276")]
+        #[expect(clippy::cast_sign_loss, reason = "a whole number from 2 to 3276")]
+        let half_points = half_points as u16;
+        self.font_size = Some(half_points);
+        Ok(self)
+    }
+
+    /// Body text size in points.
+    #[must_use]
+    pub fn font_size(&self) -> f64 {
+        f64::from(self.font_size.unwrap_or(22)) / 2.0
     }
 
     /// The width and height between the margins, in points.
