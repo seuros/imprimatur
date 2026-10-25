@@ -11,6 +11,13 @@
 - Allow a bounded exit grace when macOS cannot inspect an exiting worker;
   persistent monitor failures still terminate and reap a live worker.
 
+## [0.6.1](https://github.com/seuros/imprimatur/compare/v0.6.0...v0.6.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **pdf:** isolate bounded reads and preserve page recovery ([fbfbbc5](https://github.com/seuros/imprimatur/commit/fbfbbc5e7e44768efae293b37be255b8b797f831))
+
 ## [0.6.0](https://github.com/seuros/imprimatur/compare/v0.5.0...v0.6.0) (2026-10-25)
 
 

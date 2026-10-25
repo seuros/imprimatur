@@ -1,6 +1,6 @@
 [package]
 name = "imprimatur"
-version = "0.6.0"
+version = "0.6.1"
 description = "XLSX, PDF and DOCX authoring, and PDF, XLSX, XLS, ODS and DOCX reading, with its own XML, zip and PDF code."
 keywords = ["xlsx", "excel", "pdf", "docx", "spreadsheet"]
 categories = ["encoding", "text-processing"]

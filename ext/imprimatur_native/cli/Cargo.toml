@@ -1,6 +1,6 @@
 [package]
 name = "imprimatur-cli"
-version = "0.6.0"
+version = "0.6.1"
 description = "Read PDF, XLSX, XLS, ODS and DOCX documents as Markdown or JSON, search them, extract their images."
 keywords = ["pdf", "xlsx", "docx", "markdown", "cli"]
 categories = ["command-line-utilities", "text-processing"]
