@@ -143,6 +143,9 @@ fn supervise(
     deadline: Instant,
     memory: u64,
 ) -> Result<ExitStatus> {
+    #[cfg(not(target_os = "macos"))]
+    let _ = memory;
+
     loop {
         // SIGCHLD can invoke Ruby's unblock callback. Prefer a completed
         // worker; the binding checks pending Ruby exceptions before returning.
@@ -150,6 +153,7 @@ fn supervise(
             return Ok(status);
         }
         check(budget, deadline)?;
+        #[cfg(target_os = "macos")]
         if let Err(error) = system::check_memory(child.child.id(), memory) {
             // It may have exited between try_wait and the memory query.
             if let Some(status) = child.poll()? {

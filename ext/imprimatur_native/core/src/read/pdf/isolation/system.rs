@@ -1,9 +1,12 @@
 //! OS resource enforcement. macOS uses the supervisor's RSS watchdog.
 
+#[cfg(test)]
+mod tests;
+
 use std::process::Child;
 
 use nix::errno::Errno;
-use nix::sys::resource::{Resource, getrlimit, setrlimit};
+use nix::sys::resource::{Resource, getrlimit, rlim_t, setrlimit};
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
 
@@ -13,8 +16,10 @@ pub(super) fn apply_limits(memory: u64, cpu: u64, output: u64) -> Result<()> {
     if memory == 0 {
         return Err(Error::InvalidPdfOption("memory limit must be positive"));
     }
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[cfg(target_os = "linux")]
     lower(Resource::RLIMIT_AS, memory)?;
+    #[cfg(target_os = "freebsd")]
+    lower(Resource::RLIMIT_VMEM, memory)?;
     #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "macos")))]
     return Err(Error::UnsupportedDocument("process limits are unsupported on this OS".into()));
     lower(Resource::RLIMIT_CORE, 0)?;
@@ -25,26 +30,23 @@ pub(super) fn apply_limits(memory: u64, cpu: u64, output: u64) -> Result<()> {
 
 fn lower(resource: Resource, value: u64) -> Result<()> {
     let (soft, hard) = getrlimit(resource).map_err(std::io::Error::from)?;
-    let value = value.min(soft).min(hard);
+    let value = bounded_limit(value, soft, hard)?;
     setrlimit(resource, value, value).map_err(std::io::Error::from)?;
     Ok(())
 }
 
+fn bounded_limit(value: u64, soft: rlim_t, hard: rlim_t) -> Result<rlim_t> {
+    let value = i128::from(value).min(i128::from(soft)).min(i128::from(hard));
+    value.try_into().map_err(|_| Error::InvalidPdfOption("resource limit is out of range"))
+}
+
+#[cfg(target_os = "macos")]
 pub(super) fn check_memory(pid: u32, maximum: u64) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        let pid = i32::try_from(pid).map_err(|_| Error::InvalidPdfOption("invalid worker PID"))?;
-        let usage = libproc::proc_pid::pidinfo::<libproc::task_info::TaskInfo>(pid, 0).map_err(
-            |error| std::io::Error::other(format!("cannot monitor render worker: {error}")),
-        )?;
-        if usage.pti_resident_size > maximum {
-            return Err(Error::LimitExceeded("render worker memory"));
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        // Memory is enforced by RLIMIT_AS inside the worker.
-        let _ = (pid, maximum);
+    let pid = i32::try_from(pid).map_err(|_| Error::InvalidPdfOption("invalid worker PID"))?;
+    let usage = libproc::proc_pid::pidinfo::<libproc::task_info::TaskInfo>(pid, 0)
+        .map_err(|error| std::io::Error::other(format!("cannot monitor render worker: {error}")))?;
+    if usage.pti_resident_size > maximum {
+        return Err(Error::LimitExceeded("render worker memory"));
     }
     Ok(())
 }
