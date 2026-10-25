@@ -46,7 +46,11 @@ pub(super) fn reexec(arguments: &[std::ffi::OsString]) -> Result<()> {
     }
     match nix::unistd::execv(&executable, &args) {
         Ok(never) => match never {},
-        Err(Errno::ENOMEM) => Err(Error::LimitExceeded("PDF worker memory")),
+        // A tiny address-space cap can prevent exec from allocating its
+        // argument/environment pages and surface as E2BIG rather than ENOMEM.
+        Err(Errno::ENOMEM | Errno::E2BIG) => {
+            Err(Error::LimitExceeded("PDF worker startup resources"))
+        }
         Err(error) => Err(std::io::Error::from(error).into()),
     }
 }
