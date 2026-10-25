@@ -5,6 +5,7 @@
 
 mod geometry;
 mod operands;
+mod state;
 #[cfg(test)]
 mod tests;
 
@@ -17,10 +18,11 @@ use super::font::Font;
 use super::glyphs::push_clean;
 use super::lexer::{Lexer, Token, hex_into, literal_into, name_bytes};
 use super::object::{Dict, Object};
-use crate::Result;
 use crate::read::span;
+use crate::{Error, Result};
 use geometry::{Frame, IDENTITY, Matrix, multiply, quarter_turns};
 use operands::{Operand, inline_image, operand};
+use state::{Cursor, State};
 
 /// A glyph where it shows: its origin and advance along the baseline, in
 /// the page's displayed frame (rotation applied), and its text.
@@ -56,52 +58,9 @@ pub struct PageText {
     pub images: usize,
     /// The displayed page: width and height.
     pub size: (f64, f64),
-}
-
-/// The text matrix and the text line matrix (ISO 32000-1, 9.4.2).
-#[derive(Clone, Copy)]
-struct Cursor {
-    matrix: Matrix,
-    line: Matrix,
-}
-
-impl Cursor {
-    const START: Self = Self { matrix: IDENTITY, line: IDENTITY };
-
-    const fn at(matrix: Matrix) -> Self {
-        Self { matrix, line: matrix }
-    }
-
-    /// `Td`: the start of a new line, offset from the current line's start.
-    fn next_line(&mut self, x: f64, y: f64) {
-        self.line = multiply(&[1.0, 0.0, 0.0, 1.0, x, y], &self.line);
-        self.matrix = self.line;
-    }
-}
-
-#[derive(Clone)]
-struct State {
-    ctm: Matrix,
-    font: Option<Rc<Font>>,
-    size: f64,
-    char_spacing: f64,
-    word_spacing: f64,
-    scale: f64,
-    leading: f64,
-    rise: f64,
-}
-
-impl State {
-    const START: Self = Self {
-        ctm: IDENTITY,
-        font: None,
-        size: 0.0,
-        char_spacing: 0.0,
-        word_spacing: 0.0,
-        scale: 1.0,
-        leading: 0.0,
-        rise: 0.0,
-    };
+    pub max_bytes: Option<usize>,
+    pub truncated: bool,
+    pub strict: bool,
 }
 
 /// Fonts by the object number of their dictionary, shared across pages.
@@ -150,14 +109,23 @@ fn run(
     out.text.clear();
     out.glyphs.clear();
     out.images = 0;
+    out.truncated = false;
     let content = match page.contents.as_slice() {
-        [single] => document.stream_data(single)?.unwrap_or_default(),
+        [single] => match document.stream_data(single)? {
+            Some(data) => data,
+            None if out.strict => {
+                return Err(Error::malformed("PDF", "missing page content stream"));
+            }
+            None => Vec::new(),
+        },
         parts => {
             let mut content = Vec::new();
             for part in parts {
                 if let Some(data) = document.stream_data(part)? {
                     content.extend_from_slice(&data);
                     content.push(b'\n');
+                } else if out.strict {
+                    return Err(Error::malformed("PDF", "missing page content stream"));
                 }
             }
             content
@@ -256,7 +224,7 @@ impl Run<'_, '_> {
                     if operator == b"'" || operator == b"\"" {
                         cursor.next_line(0.0, -state.leading);
                     }
-                    self.show_operand(operands.last(), &items, &state, &mut cursor.matrix);
+                    self.show_operand(operands.last(), &items, &state, &mut cursor.matrix)?;
                 }
                 b"Do" => {
                     if let Some(name) = name(0) {
@@ -287,7 +255,7 @@ impl Run<'_, '_> {
         items: &[Operand<'_>],
         state: &State,
         matrix: &mut Matrix,
-    ) {
+    ) -> Result<()> {
         let shown = match operand {
             Some(&Operand::Array(start, end)) => items.get(start..end).unwrap_or_default(),
             Some(single) => std::slice::from_ref(single),
@@ -303,7 +271,7 @@ impl Run<'_, '_> {
                     } else {
                         literal_into(raw, &mut bytes);
                     }
-                    self.show(&bytes, state, matrix);
+                    self.show(&bytes, state, matrix)?;
                 }
                 Operand::Number(adjustment) => {
                     let shift = -adjustment / 1000.0 * state.size * state.scale;
@@ -314,6 +282,7 @@ impl Run<'_, '_> {
             }
         }
         self.bytes = bytes;
+        Ok(())
     }
 
     /// A font resource, loaded once per document.
@@ -338,8 +307,14 @@ impl Run<'_, '_> {
     }
 
     /// Emits a string's glyphs and advances the text matrix past them.
-    fn show(&mut self, bytes: &[u8], state: &State, matrix: &mut Matrix) {
-        let Some(font) = state.font.clone() else { return };
+    fn show(&mut self, bytes: &[u8], state: &State, matrix: &mut Matrix) -> Result<()> {
+        let Some(font) = state.font.clone() else {
+            return if self.page.strict && !bytes.is_empty() {
+                Err(Error::malformed("PDF", "missing font for page text"))
+            } else {
+                Ok(())
+            };
+        };
         let device = multiply(matrix, &state.ctm);
         let shown = multiply(&device, &self.rotation);
         let along = shown[0].hypot(shown[1]);
@@ -350,6 +325,7 @@ impl Run<'_, '_> {
         let mut scratch = std::mem::take(&mut self.scratch);
         let bounds = self.bounds;
         font.glyphs(bytes, &mut scratch, |text, width, space| {
+            self.document.budget().tick()?;
             let x = f64::mul_add(advance, shown[0], shown[4]) + rise.0;
             let y = f64::mul_add(advance, shown[1], shown[5]) + rise.1;
             let user = (
@@ -361,6 +337,17 @@ impl Run<'_, '_> {
                 && user.1 >= bounds[1] - 1.0
                 && user.1 <= bounds[3] + 1.0;
             if visible && !text.is_empty() {
+                if self.page.truncated {
+                    return Ok(());
+                }
+                if self
+                    .page
+                    .max_bytes
+                    .is_some_and(|limit| self.page.text.len().saturating_add(text.len()) > limit)
+                {
+                    self.page.truncated = true;
+                    return Ok(());
+                }
                 let span = span::append(&mut self.page.text, |page| push_clean(page, text));
                 if !span.is_empty() {
                     let width = width * state.size * state.scale * along;
@@ -381,10 +368,12 @@ impl Run<'_, '_> {
                 state.scale,
                 advance,
             );
-        });
+            Ok(())
+        })?;
         self.scratch = scratch;
         matrix[4] = f64::mul_add(advance, matrix[0], matrix[4]);
         matrix[5] = f64::mul_add(advance, matrix[1], matrix[5]);
+        Ok(())
     }
 
     /// `Do`: a form `XObject`'s content, in its own matrix and resources;

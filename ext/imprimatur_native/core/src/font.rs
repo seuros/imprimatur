@@ -7,6 +7,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::fmt;
+
 use read_fonts::{
     FontRead, FontRef, MinByteRange, TableProvider,
     tables::{
@@ -43,6 +45,16 @@ pub struct TrueTypeFont<'a> {
     hmtx: Hmtx<'a>,
     metrics: FontMetrics,
     glyph_count: u16,
+}
+
+impl fmt::Debug for TrueTypeFont<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrueTypeFont")
+            .field("data_len", &self.data.len())
+            .field("metrics", &self.metrics)
+            .field("glyph_count", &self.glyph_count)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a> TrueTypeFont<'a> {

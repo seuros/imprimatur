@@ -65,7 +65,7 @@ jobs:
         run: |
           mv "$HOME/.cargo" "$HOME/.cargo.off"
           gem install --local --no-document pkg/imprimatur-*-${{ matrix.platform }}.gem
-          cd /tmp && ruby -rimprimatur -e 'Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }'
+          cd /tmp && ruby -rimprimatur -e 'raise unless Imprimatur.render_pdf_page(Imprimatur.pdf { it.paragraph(%q(ok)) }, page: 1, max_side: 64).byteslice(1, 3) == %q(PNG)'
       - uses: actions/upload-artifact@v7
         with:
           name: gem-${{ matrix.platform }}
@@ -99,7 +99,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD/pkg:/pkg:ro" ruby:4.0-alpine sh -c '
             gem install --local --no-document /pkg/imprimatur-*-aarch64-linux-musl.gem && cd /tmp &&
-            ruby -rimprimatur -e "Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }"'
+            ruby -rimprimatur -e "raise unless Imprimatur.render_pdf_page(Imprimatur.pdf { it.paragraph(%q(ok)) }, page: 1, max_side: 64).byteslice(1, 3) == %q(PNG)"'
       - uses: actions/upload-artifact@v7
         with:
           name: gem-aarch64-linux-musl
@@ -132,7 +132,7 @@ jobs:
           GEM_HOME="$(mktemp -d)"
           export GEM_HOME GEM_PATH=
           PATH="$(dirname "$(which ruby)"):/usr/bin:/bin" gem install --local --no-document pkg/imprimatur-*-${{ matrix.platform }}.gem
-          cd /tmp && ruby -rimprimatur -e 'Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }'
+          cd /tmp && ruby -rimprimatur -e 'raise unless Imprimatur.render_pdf_page(Imprimatur.pdf { it.paragraph(%q(ok)) }, page: 1, max_side: 64).byteslice(1, 3) == %q(PNG)'
       - uses: actions/upload-artifact@v7
         with:
           name: gem-${{ matrix.platform }}
@@ -180,7 +180,7 @@ jobs:
             bundle exec rake gems:native
             mv "$HOME/.cargo" "$HOME/.cargo.off"
             gem install --local --no-document pkg/imprimatur-*-freebsd-*.gem
-            cd /tmp && ruby -rimprimatur -e 'Imprimatur.xlsx { it.sheet(%q(ok)).row(1) }'
+            cd /tmp && ruby -rimprimatur -e 'raise unless Imprimatur.render_pdf_page(Imprimatur.pdf { it.paragraph(%q(ok)) }, page: 1, max_side: 64).byteslice(1, 3) == %q(PNG)'
       - uses: actions/upload-artifact@v7
         with:
           name: gem-freebsd

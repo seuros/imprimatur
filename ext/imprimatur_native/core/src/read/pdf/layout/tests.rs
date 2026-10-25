@@ -23,8 +23,7 @@ fn page(lines: &[(&str, f64, f64, bool)]) -> PageLines {
 /// A page drawn left to right, glyph by glyph, from `(text, baseline)`
 /// lines: a space is a gap, not a glyph.
 fn drawn(lines: &[(&str, f64)]) -> PageText {
-    let mut page =
-        PageText { text: String::new(), glyphs: Vec::new(), images: 0, size: (612.0, 792.0) };
+    let mut page = PageText { size: (612.0, 792.0), ..PageText::default() };
     for &(text, y) in lines {
         let mut x = 72.0;
         for ch in text.chars() {

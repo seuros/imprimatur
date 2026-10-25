@@ -1,12 +1,11 @@
 //! Barcodes in the flow: shapes in a PDF, a picture in DOCX.
 
+use super::size;
 use crate::Result;
 use crate::barcode::{Barcode, Look, Shapes};
 use crate::doc::Picture;
 use crate::style::{Align, Color};
 
-/// The largest side, in points, a symbol may be set to: PDF's page limit.
-const MAX_POINTS: f64 = 14_400.0;
 /// Pixels an inch a DOCX picture of a symbol has at least.
 const DOCX_DPI: f64 = 300.0;
 
@@ -96,8 +95,7 @@ impl Symbol {
             };
             (columns * module, rows * module)
         };
-        let scale = (room.0 / width).min(room.1 / height).min(1.0);
-        (shapes, (width * scale, height * scale))
+        (shapes, size::fit((width, height), room))
     }
 
     /// A PNG of it at 300 pixels an inch or more, for formats that take
@@ -125,7 +123,7 @@ impl Symbol {
 
     fn points_in_range(&self, points: f64) -> Result<f64> {
         let invalid = || self.barcode.symbology().invalid("a size of 1 to 14 400 points");
-        (1.0..=MAX_POINTS).contains(&points).then_some(points).ok_or_else(invalid)
+        size::points_in_range(points).ok_or_else(invalid)
     }
 }
 

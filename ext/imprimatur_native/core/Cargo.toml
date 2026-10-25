@@ -25,17 +25,19 @@ include = [
 workspace = true
 
 [dependencies]
-aes = "0.9.3"
-crc32fast = "1.5.2"
-datamatrix = "0.3.3"
-md-5 = "0.11.0"
-miniz_oxide = "0.9.1"
-qrcode = { version = "0.14.1", default-features = false }
-read-fonts = { version = "0.45.1", optional = true }
+aes.workspace = true
+crc32fast.workspace = true
+datamatrix.workspace = true
+hayro = { workspace = true, optional = true }
+md-5.workspace = true
+miniz_oxide.workspace = true
+qrcode.workspace = true
+read-fonts = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-sha2 = "0.11.1"
-thiserror = "2.0.21"
-zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"], optional = true }
+sha2.workspace = true
+thiserror.workspace = true
+tempfile = { workspace = true, optional = true }
+zip = { workspace = true, optional = true }
 
 [features]
 # `read::json`: content and images as JSON, the schema the command line and
@@ -47,8 +49,22 @@ archive = ["dep:zip"]
 # `font`: static TrueType font data (glyphs, advances, line metrics),
 # through `read-fonts`.
 fonts = ["dep:read-fonts"]
+# Pure-Rust full-page PDF rasterization; readers and writers remain independent.
+render = ["dep:hayro"]
+isolation = ["render", "dep:tempfile", "dep:nix", "dep:libproc"]
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libproc = { workspace = true, optional = true }
+
+[[bin]]
+name = "imprimatur-render-worker"
+path = "src/bin/imprimatur-render-worker.rs"
+required-features = ["isolation"]
 
 [dev-dependencies]
-font-test-data = "0.10.0"
+font-test-data.workspace = true
 tempfile.workspace = true
-zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip.workspace = true

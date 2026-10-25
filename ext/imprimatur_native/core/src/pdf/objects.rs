@@ -127,7 +127,7 @@ impl<W: Write> Write for Counted<'_, W> {
 
 /// A number for a content stream: two decimals at most, no trailing zeros,
 /// formatted without an intermediate `String`.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Num(pub f64);
 
 impl fmt::Display for Num {

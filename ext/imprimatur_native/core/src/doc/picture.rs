@@ -2,13 +2,12 @@
 
 use std::sync::Arc;
 
+use super::size;
 use crate::style::Align;
 use crate::{Error, Result};
 
 /// Pixels per point at 96 pixels an inch: a picture's size when none is set.
 const POINTS_PER_PIXEL: f64 = 0.75;
-/// The largest side, in points, a picture may be set to: PDF's page limit.
-const MAX_POINTS: f64 = 14_400.0;
 /// The largest side, in pixels, a picture may have.
 const MAX_PIXELS: u32 = 1 << 16;
 
@@ -112,15 +111,12 @@ impl Picture {
             (None, Some(height)) => (height * pixels_wide / pixels_high, height),
             (None, None) => (pixels_wide * POINTS_PER_PIXEL, pixels_high * POINTS_PER_PIXEL),
         };
-        let scale = (room.0 / width).min(room.1 / height).min(1.0);
-        (width * scale, height * scale)
+        size::fit((width, height), room)
     }
 }
 
 fn points_in_range(points: f64) -> Result<f64> {
-    (1.0..=MAX_POINTS)
-        .contains(&points)
-        .then_some(points)
+    size::points_in_range(points)
         .ok_or(Error::InvalidImage("a picture of 1 to 14 400 points a side"))
 }
 

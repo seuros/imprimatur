@@ -1,9 +1,8 @@
 use std::assert_matches;
 
-use super::*;
-use crate::doc::{Document as Doc, Paragraph, Run, Table};
+use crate::Error;
 use crate::read::{Limits, markdown as read};
-use crate::test_support::{page_pdf, pdf_of, stream_object};
+use crate::test_support::{page_pdf, pdf_of, report, stream_object};
 
 const IMAGE: &str = "/Type /XObject /Subtype /Image /Width 1 /Height 1 \
                      /ColorSpace /DeviceGray /BitsPerComponent 8";
@@ -14,15 +13,8 @@ fn text(pdf: &[u8]) -> String {
 
 #[test]
 fn reads_what_the_writer_wrote() {
-    let mut doc = Doc::new();
+    let mut doc = report();
     doc.set_page_numbers(true);
-    doc.heading(1, "Quarterly report").unwrap();
-    doc.heading(2, "Sales").unwrap();
-    doc.push_paragraph(
-        Paragraph::new().text("Revenue was ").run(Run::new("up 12%").bold()).text(" this quarter."),
-    )
-    .unwrap();
-    doc.table(Table::new([["Region", "Q1"], ["North", "12.5"]]).header()).unwrap();
     for _ in 0..3 {
         doc.page_break();
         doc.paragraph("Appendix page.").unwrap();
@@ -86,7 +78,16 @@ fn scanned_pages_have_no_text_layer() {
         stream_object("", b"q 612 0 0 792 0 0 cm /Scan Do Q BI /W 1 /H 1 /CS /G /BPC 8 ID \x00 EI"),
         stream_object(IMAGE, b"\x00"),
     ];
-    assert_matches!(read(&pdf_of(&objects), &Limits::default()), Err(Error::NoTextLayer));
+    let pdf = pdf_of(&objects);
+    assert_matches!(read(&pdf, &Limits::default()), Err(Error::NoTextLayer));
+    let crate::read::Content::Pdf(pages) = crate::read::content(&pdf, &Limits::default()).unwrap()
+    else {
+        panic!("a scanned PDF still has page structure");
+    };
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].number, 1);
+    assert_eq!(pages[0].blocks, []);
+    assert_eq!(pages[0].images, 2);
 }
 
 #[test]

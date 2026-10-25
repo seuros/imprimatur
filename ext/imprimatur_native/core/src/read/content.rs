@@ -27,6 +27,22 @@ pub enum Content {
 }
 
 impl Content {
+    /// Requires readable PDF text for text-oriented callers, while structured
+    /// callers can still inspect scanned and blank pages.
+    ///
+    /// # Errors
+    /// [`crate::Error::NoTextLayer`] for a PDF without readable blocks.
+    pub fn ensure_text_layer(&self) -> crate::Result<()> {
+        if let Self::Pdf(pages) = self
+            && pages.iter().all(|page| {
+                page.blocks.iter().all(|block| block.block.plain_text().trim().is_empty())
+            })
+        {
+            return Err(crate::Error::NoTextLayer);
+        }
+        Ok(())
+    }
+
     /// The document's format.
     #[must_use]
     pub const fn format(&self) -> super::Format {

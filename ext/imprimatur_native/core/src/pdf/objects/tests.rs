@@ -1,6 +1,7 @@
 use std::io::{Cursor, ErrorKind};
 
 use super::*;
+use crate::test_support::pdf_integer;
 use std::assert_matches;
 
 #[test]
@@ -25,15 +26,7 @@ fn stream_entries_preserve_binary_data_and_object_offsets() {
     let dictionary = std::str::from_utf8(&pdf[start..body]).unwrap();
     assert!(dictionary.contains(&format!("/Length1 {} /Subtype /OpenType", data.len())));
     assert!(dictionary.contains("/Filter /FlateDecode"));
-    let length: usize = dictionary
-        .split("/Length ")
-        .nth(1)
-        .unwrap()
-        .split_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let length = pdf_integer(dictionary, "Length");
     assert_ne!(length, data.len(), "Length counts encoded bytes; Length1 counts decoded bytes");
     assert_eq!(
         miniz_oxide::inflate::decompress_to_vec_zlib(&pdf[body..body + length]).unwrap(),

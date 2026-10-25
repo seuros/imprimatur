@@ -225,15 +225,7 @@ fn stream(pdf: &[u8], id: usize) -> (&str, Vec<u8>) {
     let object = object(pdf, id);
     let start = object.windows(7).position(|bytes| bytes == b"stream\n").unwrap() + 7;
     let dictionary = std::str::from_utf8(&object[..start]).unwrap();
-    let length: usize = dictionary
-        .split("/Length ")
-        .nth(1)
-        .unwrap()
-        .split_whitespace()
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let length = crate::test_support::pdf_integer(dictionary, "Length");
     let decoded =
         miniz_oxide::inflate::decompress_to_vec_zlib(&object[start..start + length]).unwrap();
     (dictionary, decoded)

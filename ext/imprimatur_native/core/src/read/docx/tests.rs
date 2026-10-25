@@ -1,19 +1,11 @@
-use crate::doc::{Document, Paragraph, Run, Table as DocTable};
 use crate::read::{
     Block, Content, ImageFormat, ImageLocation, Limits, Mark, content, images, markdown as read,
 };
-use crate::test_support::zip_of;
+use crate::test_support::{report, zip_of};
 
 #[test]
 fn reads_what_the_writer_wrote() {
-    let mut doc = Document::new();
-    doc.heading(1, "Quarterly report").unwrap();
-    doc.heading(2, "Sales").unwrap();
-    doc.push_paragraph(
-        Paragraph::new().text("Revenue was ").run(Run::new("up 12%").bold()).text(" this quarter."),
-    )
-    .unwrap();
-    doc.table(DocTable::new([["Region", "Q1"], ["North", "12.5"]]).header()).unwrap();
+    let doc = report();
     let text = read(&doc.to_docx().unwrap(), &Limits::default()).unwrap();
     assert_eq!(
         text,

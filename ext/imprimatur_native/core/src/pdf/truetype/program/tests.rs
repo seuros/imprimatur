@@ -37,11 +37,7 @@ fn directory_checksums_and_zero_padding_are_valid() {
     let count = directory.num_tables();
     assert_eq!(directory.search_range(), 16 * 2_u16.pow(u32::from(directory.entry_selector())));
     assert_eq!(directory.range_shift(), 16 * count - directory.search_range());
-    let total = output
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .fold(0_u32, |sum, word| sum.wrapping_add(u32::from_be_bytes(*word)));
+    let total = directory_checksum(&output);
     assert_eq!(total, 0xB1B0_AFBA);
     let mut end = 12 + 16 * usize::from(count);
     for record in directory.table_records() {
@@ -54,11 +50,7 @@ fn directory_checksums_and_zero_padding_are_valid() {
             table[8..12].fill(0);
         }
         table.resize(table.len().next_multiple_of(4), 0);
-        let sum = table
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .fold(0_u32, |sum, word| sum.wrapping_add(u32::from_be_bytes(*word)));
+        let sum = directory_checksum(&table);
         assert_eq!(record.checksum(), sum);
         end = start + length;
     }
@@ -100,4 +92,11 @@ fn drops_a_signature_invalidated_by_rebuilding_the_font() {
     data[offset..offset + 4].copy_from_slice(b"DSIG");
     let output = for_pdf(&TrueTypeFont::from_bytes(&data).unwrap()).unwrap();
     assert!(FontRef::new(&output).unwrap().table_data(Tag::new(b"DSIG")).is_none());
+}
+
+/// Independent checksum for padded fixtures.
+fn directory_checksum(data: &[u8]) -> u32 {
+    let (words, remainder) = data.as_chunks::<4>();
+    std::assert_matches!(remainder, []);
+    words.iter().fold(0_u32, |sum, word| sum.wrapping_add(u32::from_be_bytes(*word)))
 }

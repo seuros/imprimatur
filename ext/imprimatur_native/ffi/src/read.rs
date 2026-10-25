@@ -16,14 +16,11 @@ use serde_json::Value as Json;
 use crate::blocking::MAX_ATTEMPTS;
 use crate::{argument_error, domain_error};
 
-/// A read of a document's bytes within limits, run without the GVL.
-pub type Job<T> = fn(&[u8], &Limits) -> imprimatur::Result<T>;
-
 /// What crosses into the thread without the GVL, and comes back.
-struct Read<T> {
+struct Read<T, F> {
     document: Vec<u8>,
     limits: Limits,
-    job: Job<T>,
+    job: F,
     result: Option<imprimatur::Result<T>>,
 }
 
@@ -107,17 +104,20 @@ fn limits(
 }
 
 /// Runs `job` on the document's bytes on this thread, the GVL released.
-pub fn without_gvl<T>(
+pub fn without_gvl<T, F>(
     ruby: &Ruby,
     document: RString,
     keywords: (Option<usize>, Option<u64>, Option<f64>),
-    job: Job<T>,
-) -> Result<T, Error> {
+    job: F,
+) -> Result<T, Error>
+where
+    F: Fn(&[u8], &Limits) -> imprimatur::Result<T>,
+{
     let document = crate::bytes(document);
     let cancel = Arc::new(AtomicBool::new(false));
     let limits = limits(ruby, &cancel, keywords)?;
     let mut read = Read { document, limits, job, result: None };
-    let read_pointer: *mut Read<T> = &raw mut read;
+    let read_pointer: *mut Read<T, F> = &raw mut read;
     let flag_pointer = Arc::as_ptr(&cancel).cast_mut();
     for _ in 0..MAX_ATTEMPTS {
         // SAFETY: `read` and `cancel` outlive the call, which returns only
@@ -127,12 +127,15 @@ pub fn without_gvl<T>(
         #[allow(unsafe_code)]
         unsafe {
             rb_sys::rb_thread_call_without_gvl2(
-                Some(run::<T>),
+                Some(run::<T, F>),
                 read_pointer.cast(),
                 Some(stop),
                 flag_pointer.cast(),
             );
         }
+        // In particular, SIGCHLD wakes an isolated render on normal completion.
+        // Deliver real Ruby interrupts even when the native job succeeded.
+        ruby.thread_check_ints()?;
         match read.result.take() {
             Some(Ok(value)) => return Ok(value),
             // Cut short by Ruby: raise what Ruby has to raise (Thread#raise,
@@ -153,10 +156,13 @@ pub fn without_gvl<T>(
 /// The read itself, on the thread without the GVL. A panic would abort
 /// the process at this C boundary; it becomes an error instead.
 #[allow(unsafe_code)]
-unsafe extern "C" fn run<T>(data: *mut c_void) -> *mut c_void {
+unsafe extern "C" fn run<T, F>(data: *mut c_void) -> *mut c_void
+where
+    F: Fn(&[u8], &Limits) -> imprimatur::Result<T>,
+{
     // SAFETY: `data` is the `Read<T>` without_gvl passed, alive and not
     // otherwise borrowed until this returns.
-    let read = unsafe { &mut *data.cast::<Read<T>>() };
+    let read = unsafe { &mut *data.cast::<Read<T, F>>() };
     let result = catch_unwind(AssertUnwindSafe(|| (read.job)(&read.document, &read.limits)));
     read.result = Some(result.unwrap_or_else(|_| {
         Err(imprimatur::Error::Malformed {

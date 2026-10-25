@@ -1,6 +1,8 @@
 //! A PDF file's objects on demand: loaded once and shared, decrypted, and
 //! their streams decoded; then the pages, with what they inherit.
 
+mod pages;
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -67,6 +69,7 @@ pub struct Document<'a> {
     objects: RefCell<HashMap<u32, Rc<Object>>>,
     streams: RefCell<HashMap<u32, Rc<ObjectStream>>>,
     loading: RefCell<Vec<u32>>,
+    strict: bool,
 }
 
 impl<'a> Document<'a> {
@@ -81,6 +84,7 @@ impl<'a> Document<'a> {
             objects: RefCell::default(),
             streams: RefCell::default(),
             loading: RefCell::default(),
+            strict: false,
         };
         if let Some(encrypt) = document.xref.trailer.get(b"Encrypt").cloned() {
             let encrypt = document.resolve(&encrypt)?;
@@ -98,6 +102,11 @@ impl<'a> Document<'a> {
 
     pub const fn budget(&self) -> &'a Budget<'a> {
         self.budget
+    }
+
+    pub const fn strict(mut self) -> Self {
+        self.strict = true;
+        self
     }
 
     pub const fn trailer(&self) -> &Dict {
@@ -221,6 +230,9 @@ impl<'a> Document<'a> {
     pub fn decode(&self, stream: &Stream, number: Option<u32>) -> Result<Vec<u8>> {
         let raw = self.raw(stream, number)?;
         let filters = self.filters(&stream.dict)?;
+        if self.strict {
+            return filter::decode_strict(&raw, &filter_params(&filters), self.budget);
+        }
         decode_with(&raw, &filters, self.budget)
     }
 
@@ -285,107 +297,8 @@ impl<'a> Document<'a> {
         }
     }
 
-    /// The pages in order. When the page tree is broken, every object of
-    /// type `/Page`, by object number.
-    pub fn pages(&self) -> Result<Vec<Page>> {
-        let mut pages = Vec::new();
-        if let Some(root) = self.trailer().get(b"Root").cloned() {
-            let root = self.resolve(&root)?;
-            if let Some(tree) = root.as_dict().and_then(|root| root.get(b"Pages")).cloned() {
-                let inherited =
-                    Inherited { resources: None, media_box: [0.0, 0.0, 612.0, 792.0], rotate: 0 };
-                let mut visited = Vec::new();
-                self.walk(&tree, &inherited, 0, &mut visited, &mut pages)?;
-            }
-        }
-        if pages.is_empty() {
-            let mut numbers: Vec<u32> = self.xref.entries.keys().copied().collect();
-            numbers.sort_unstable();
-            for number in numbers {
-                let object = self.get(number)?;
-                if let Some(dict) = object.as_dict()
-                    && dict.has_name(b"Type", b"Page")
-                {
-                    let inherited = Inherited {
-                        resources: None,
-                        media_box: [0.0, 0.0, 612.0, 792.0],
-                        rotate: 0,
-                    };
-                    pages.push(self.page(dict, &inherited)?);
-                }
-            }
-        }
-        Ok(pages)
-    }
-
-    fn walk(
-        &self,
-        node: &Object,
-        inherited: &Inherited,
-        depth: usize,
-        visited: &mut Vec<u32>,
-        pages: &mut Vec<Page>,
-    ) -> Result<()> {
-        self.budget.nest(depth)?;
-        if let Some((number, _)) = node.as_reference() {
-            if visited.contains(&number) {
-                return Ok(());
-            }
-            visited.push(number);
-        }
-        let node = self.resolve(node)?;
-        let Some(dict) = node.as_dict() else { return Ok(()) };
-        let inherited = self.inherit(dict, inherited)?;
-        match self.entry(dict, b"Kids")?.as_deref() {
-            Some(Object::Array(kids)) if !dict.has_name(b"Type", b"Page") => {
-                for kid in kids {
-                    self.walk(kid, &inherited, depth + 1, visited, pages)?;
-                }
-            }
-            _ => pages.push(self.page(dict, &inherited)?),
-        }
-        Ok(())
-    }
-
-    fn inherit(&self, dict: &Dict, inherited: &Inherited) -> Result<Inherited> {
-        let resources = match dict.get(b"Resources") {
-            Some(object) => Some(self.resolve(object)?.into_shared()),
-            None => inherited.resources.clone(),
-        };
-        let media_box = match self.entry(dict, b"MediaBox")?.as_deref().and_then(Object::as_array) {
-            Some(corners) if corners.len() == 4 => {
-                let mut media_box = [0.0; 4];
-                for (slot, corner) in media_box.iter_mut().zip(corners) {
-                    *slot = self.resolve(corner)?.as_number().unwrap_or(0.0);
-                }
-                media_box
-            }
-            _ => inherited.media_box,
-        };
-        let rotate = self
-            .entry(dict, b"Rotate")?
-            .and_then(|rotate| rotate.as_integer())
-            .unwrap_or(inherited.rotate);
-        Ok(Inherited { resources, media_box, rotate })
-    }
-
-    fn page(&self, dict: &Dict, inherited: &Inherited) -> Result<Page> {
-        let inherited = self.inherit(dict, inherited)?;
-        let contents = match dict.get(b"Contents") {
-            Some(reference @ Object::Ref(..)) => match &*self.resolve(reference)? {
-                Object::Array(parts) => parts.clone(),
-                _ => vec![reference.clone()],
-            },
-            Some(Object::Array(parts)) => parts.clone(),
-            Some(other) => vec![other.clone()],
-            None => Vec::new(),
-        };
-        Ok(Page {
-            resources: inherited.resources,
-            contents,
-            media_box: inherited.media_box,
-            rotate: inherited.rotate,
-        })
+    pub const fn encrypted(&self) -> bool {
+        self.crypt.is_some()
     }
 }
 
@@ -394,17 +307,14 @@ pub type Filter = (Name, Option<Rc<Object>>);
 
 /// `raw` through `filters`, in order.
 pub fn decode_with(raw: &[u8], filters: &[Filter], budget: &Budget<'_>) -> Result<Vec<u8>> {
-    let filters: Vec<(&[u8], Option<&Dict>)> = filters
-        .iter()
-        .map(|(name, params)| (&**name, params.as_deref().and_then(Object::as_dict)))
-        .collect();
-    filter::decode(raw, &filters, budget)
+    filter::decode(raw, &filter_params(filters), budget)
 }
 
-struct Inherited {
-    resources: Option<Rc<Object>>,
-    media_box: [f64; 4],
-    rotate: i64,
+fn filter_params(filters: &[Filter]) -> Vec<(&[u8], Option<&Dict>)> {
+    filters
+        .iter()
+        .map(|(name, params)| (&**name, params.as_deref().and_then(Object::as_dict)))
+        .collect()
 }
 
 /// Decrypts every string in an object freshly read from the file.

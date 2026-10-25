@@ -23,6 +23,24 @@ create_rust_makefile('imprimatur/imprimatur_native') do |r|
   r.profile = ENV.fetch('RB_SYS_CARGO_PROFILE', :release).to_sym
 end
 
+# Build an ordinary executable, not a Ruby cdylib with Ruby's linker flags.
+File.open('Makefile', 'a') do |make|
+  make.write <<~MAKE
+
+    .PHONY: render-worker install-render-worker
+    RENDER_WORKER_MANIFEST = $(RB_SYS_CARGO_MANIFEST_DIR)/../core/Cargo.toml
+    all: render-worker
+    render-worker:
+    \t$(CARGO) build --manifest-path "$(RENDER_WORKER_MANIFEST)" \\
+    \t  --bin imprimatur-render-worker --features isolation $(RB_SYS_CARGO_PROFILE_FLAG) \\
+    \t  --target-dir "$(RB_SYS_CARGO_TARGET_DIR)" $(if $(CARGO_BUILD_TARGET),--target $(CARGO_BUILD_TARGET))
+    install: install-render-worker
+    install-render-worker: render-worker
+    \t$(MAKEDIRS) "$(RUBYARCHDIR)"
+    \t$(INSTALL_PROG) "$(RUSTLIBDIR)/imprimatur-render-worker" "$(RUBYARCHDIR)/imprimatur-render-worker"
+  MAKE
+end
+
 # BSD make reads BSDmakefile first (GNU make ignores it): delegate to gmake.
 if BSD
   File.write('BSDmakefile', <<~MAKE)

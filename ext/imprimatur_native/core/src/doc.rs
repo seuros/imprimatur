@@ -23,6 +23,7 @@
 
 mod paragraph;
 pub(crate) mod picture;
+mod size;
 mod symbol;
 mod table;
 #[cfg(test)]

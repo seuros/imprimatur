@@ -10,6 +10,7 @@ require_relative 'imprimatur/barcode'
 require_relative 'imprimatur/xlsx'
 require_relative 'imprimatur/document'
 require_relative 'imprimatur/reader'
+require_relative 'imprimatur/pdf_reader'
 require_relative 'imprimatur/spreadsheet'
 require_relative 'imprimatur/zip'
 
@@ -92,13 +93,36 @@ module Imprimatur
     #   sheet = Imprimatur.content('sales.xlsx')[:sheets].first
     #   sheet[:rows][1][:cells]  # => [{cell: "A2", type: "text", value: "North"}, ...]
     #
-    # Takes the arguments of {.markdown}, and raises as it does. With
+    # Unlike {.markdown}, a PDF without text still returns every page, with
+    # empty +:blocks+ and its image count, rather than raising {NoTextLayer}.
+    # This keeps scanned and blank pages visible to OCR callers.
+    #
+    # Takes the arguments of {.markdown}, and raises as it does otherwise. With
     # +styles: true+ each sheet also lists its formatted cells' +:styles+:
     # font, size, bold, italic, underline, ARGB color and fill, alignment,
     # wrap, border and number format.
     #
     # @return [Hash] with symbol keys; +:format+ is +"pdf"+, +"xlsx"+ or +"docx"+
     def content(document, ...) = Reader.content(document, ...)
+
+    # PDF metadata without reading page content.
+    # @return [Hash] +page_count:+ and +encrypted:+
+    def pdf_info(document, ...) = PdfReader.info(document, ...)
+
+    # A bounded, one-based page selection. Each page has its status, text,
+    # image count (nil when unknown), truncation flag and failure reason.
+    # Takes +first_page:+, +last_page:+, +max_pages:+ (500),
+    # +max_page_bytes:+ (256 KiB), +max_output_bytes:+ (8 MiB), and read limits.
+    # @return [Hash] +page_count:+, +encrypted:+ and +pages:+
+    def pdf_pages(document, ...) = PdfReader.pages(document, ...)
+
+    # A full page as an opaque PNG, not just its embedded images.
+    # Takes +page:+ (one-based), +max_side:+ (1568), +max_pixels:+ (4 million),
+    # +max_output_bytes:+ (8 MiB), +grayscale:+ (true), and read limits.
+    # Rendering checks time/cancellation before and after Hayro, not during it.
+    # Untrusted documents still need an externally limited worker process.
+    # @return [String] PNG bytes
+    def render_pdf_page(document, ...) = PdfReader.render(document, ...)
 
     # A workbook's sheets and their values, read from the same documents
     # {.markdown} takes (+.xlsx+, +.xls+, +.ods+); see {Spreadsheet}.

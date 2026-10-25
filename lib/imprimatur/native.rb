@@ -15,3 +15,10 @@ rescue LoadError => e
   raise LoadError, "imprimatur: the native extension did not load (#{e.message}). " \
                    'Install a platform gem, or build it with `rake compile` (toolchain: https://rustup.rs).'
 end
+
+module Imprimatur
+  # Always use the companion of the loaded extension, never PATH.
+  RENDER_WORKER = File.join(File.dirname($LOADED_FEATURES.find do |path|
+    path.end_with?("/imprimatur_native.#{RbConfig::CONFIG['DLEXT']}")
+  end), 'imprimatur-render-worker').freeze
+end

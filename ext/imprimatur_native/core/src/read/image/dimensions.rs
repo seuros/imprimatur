@@ -37,7 +37,7 @@ impl Bytes<'_> {
     }
 
     fn u16_le(&self, at: usize) -> Option<u16> {
-        self.array(at).map(u16::from_le_bytes)
+        crate::bytes::u16_le(self.0, at)
     }
 
     fn u16_be(&self, at: usize) -> Option<u16> {
@@ -45,7 +45,7 @@ impl Bytes<'_> {
     }
 
     fn u32_le(&self, at: usize) -> Option<u32> {
-        self.array(at).map(u32::from_le_bytes)
+        crate::bytes::u32_le(self.0, at)
     }
 
     fn u32_be(&self, at: usize) -> Option<u32> {

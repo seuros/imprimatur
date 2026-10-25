@@ -1,8 +1,11 @@
-//! PDF: the text layer as Markdown. Every page's content runs through a
+//! PDF inspection, bounded text reads and optional full-page rendering.
+//!
+//! Every page's content runs through a
 //! small interpreter that places each glyph; layout turns the glyphs into
 //! lines, paragraphs and headings. Scanned pages have no text layer:
 //! they are images, and need OCR.
 
+mod bounded;
 mod cmap;
 mod content;
 mod crypt;
@@ -18,20 +21,28 @@ mod object;
 mod tests;
 mod xref;
 
+pub use bounded::{Info, PageResult, Pages, ReadOptions, Status, info, pages};
+#[cfg(feature = "render")]
+mod render;
+#[cfg(feature = "render")]
+pub use render::{RenderOptions, render_page};
+#[cfg(all(feature = "isolation", unix))]
+pub mod isolation;
+
 use super::Budget;
 use super::content::Page;
-use crate::{Error, Result};
+use crate::Result;
 use content::{Fonts, PageText};
 use document::Document;
-pub use images::images;
+pub(super) use images::images;
 use xref::is_limit;
 
 /// `%PDF-` within the first kilobyte, where readers look for it.
-pub fn is_pdf(document: &[u8]) -> bool {
+pub(super) fn is_pdf(document: &[u8]) -> bool {
     document[..document.len().min(1024)].windows(5).any(|window| window == b"%PDF-")
 }
 
-pub fn content(data: &[u8], budget: &Budget<'_>) -> Result<Vec<Page>> {
+pub(super) fn content(data: &[u8], budget: &Budget<'_>) -> Result<Vec<Page>> {
     let document = Document::open(data, budget)?;
     let pages = document.pages()?;
     let mut fonts = Fonts::new();
@@ -45,9 +56,6 @@ pub fn content(data: &[u8], budget: &Budget<'_>) -> Result<Vec<Page>> {
             Err(error) if is_limit(&error) => return Err(error),
             Err(_) => lines.push(layout::PageLines::default()),
         }
-    }
-    if lines.iter().all(|page| page.text.trim().is_empty()) {
-        return Err(Error::NoTextLayer);
     }
     Ok(layout::pages(&lines))
 }

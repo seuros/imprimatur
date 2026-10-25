@@ -13,6 +13,7 @@ use super::Budget;
 use super::content::{Grid, Sheet, Value};
 use super::numbers::{Shown, built_in, classify, push_number};
 use super::ole::Ole;
+use crate::bytes::{u16_le as u16_at, u32_le as u32_at};
 use crate::{Error, Result};
 use strings::Encoding;
 
@@ -68,14 +69,6 @@ fn records(data: &[u8], mut at: usize) -> impl Iterator<Item = (u16, &[u8])> {
         at += 4 + length;
         Some((kind, body))
     })
-}
-
-fn u16_at(body: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(body.get(at..at + 2)?.try_into().ok()?))
-}
-
-fn u32_at(body: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(body.get(at..at + 4)?.try_into().ok()?))
 }
 
 /// A worksheet the workbook lists.

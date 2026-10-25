@@ -25,7 +25,7 @@ mod numbers;
 mod ods;
 mod ole;
 mod package;
-mod pdf;
+pub mod pdf;
 mod span;
 #[cfg(test)]
 mod tests;
@@ -82,8 +82,7 @@ impl Format {
 ///
 /// # Errors
 /// [`Error::UnsupportedDocument`] for other formats (legacy `.doc`, binary
-/// `.xlsb`, presentations, ODF text), [`Error::NoTextLayer`] for a
-/// PDF of scanned pages, [`Error::PasswordRequired`] for a document that
+/// `.xlsb`, presentations, ODF text), [`Error::PasswordRequired`] for a document that
 /// needs one, [`Error::LimitExceeded`] and [`Error::Cancelled`] when the
 /// [`Limits`] stop the read, and [`Error::Malformed`] for a corrupt document.
 pub fn content(document: &[u8], limits: &Limits) -> Result<Content> {
@@ -117,9 +116,11 @@ pub fn content(document: &[u8], limits: &Limits) -> Result<Content> {
 /// [`Content::to_markdown`].
 ///
 /// # Errors
-/// As [`content`].
+/// As [`content`], and [`Error::NoTextLayer`] for a PDF without text.
 pub fn markdown(document: &[u8], limits: &Limits) -> Result<String> {
-    content(document, limits).map(|content| content.to_markdown())
+    let content = content(document, limits)?;
+    content.ensure_text_layer()?;
+    Ok(content.to_markdown())
 }
 
 /// Calls `each` with every image in a document, as a file.

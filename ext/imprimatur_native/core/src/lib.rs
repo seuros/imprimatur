@@ -19,9 +19,15 @@
 //! # Ok::<(), imprimatur::Error>(())
 //! ```
 
+#![cfg_attr(
+    all(test, feature = "isolation", unix),
+    expect(dead_code_pub_in_binary, reason = "worker entry point is integration-tested")
+)]
+
 #[cfg(feature = "archive")]
 pub mod archive;
 pub mod barcode;
+mod bytes;
 pub mod doc;
 mod docx;
 mod error;

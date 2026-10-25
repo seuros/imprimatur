@@ -89,7 +89,9 @@ pub fn read(file: &Path) -> imprimatur::Result<Vec<u8>> {
 
 /// A document's content: the file read, then the document.
 pub fn content(file: &Path, limits: &Limits) -> imprimatur::Result<Content> {
-    read(file).and_then(|document| imprimatur::read::content(&document, limits))
+    let content = read(file).and_then(|document| imprimatur::read::content(&document, limits))?;
+    content.ensure_text_layer()?;
+    Ok(content)
 }
 
 /// What a document's outputs are named after: its file's stem, `stdin`

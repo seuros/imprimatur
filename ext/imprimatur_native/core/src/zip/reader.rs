@@ -8,6 +8,7 @@ mod tests;
 use super::{
     CENTRAL_HEADER, END_OF_CENTRAL_DIRECTORY, LOCAL_HEADER, METHOD_DEFLATED, METHOD_STORED,
 };
+use crate::bytes::{u16_le as u16_at, u32_le as u32_at};
 use crate::read::Budget;
 use crate::{Error, Result};
 
@@ -129,14 +130,6 @@ impl<'a> ZipReader<'a> {
             .ok_or_else(|| malformed("an entry fails its CRC"))?;
         Ok(Some(data))
     }
-}
-
-fn u16_at(data: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(data.get(at..at + 2)?.try_into().ok()?))
-}
-
-fn u32_at(data: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(data.get(at..at + 4)?.try_into().ok()?))
 }
 
 fn malformed(reason: &str) -> Error {

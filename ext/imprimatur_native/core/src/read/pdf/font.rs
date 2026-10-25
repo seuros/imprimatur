@@ -125,8 +125,8 @@ impl Font {
         &self,
         bytes: &[u8],
         scratch: &mut String,
-        mut glyph: impl FnMut(&str, f64, bool),
-    ) {
+        mut glyph: impl FnMut(&str, f64, bool) -> Result<()>,
+    ) -> Result<()> {
         let mut at = 0;
         while at < bytes.len() {
             let length = match &self.codes {
@@ -171,8 +171,9 @@ impl Font {
                     .unwrap_or(*default)
                 }
             };
-            glyph(scratch, width * self.scale, length == 1 && code == 32);
+            glyph(scratch, width * self.scale, length == 1 && code == 32)?;
         }
+        Ok(())
     }
 }
 

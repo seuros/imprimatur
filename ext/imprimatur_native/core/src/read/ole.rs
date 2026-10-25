@@ -5,6 +5,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::bytes::{u16_le as u16_at, u32_le as u32_at};
 use crate::read::Budget;
 use crate::{Error, Result};
 
@@ -36,14 +37,6 @@ fn malformed(reason: &str) -> Error {
 /// An allocation table's sector numbers.
 fn words(bytes: &[u8]) -> impl Iterator<Item = u32> + '_ {
     bytes.as_chunks::<4>().0.iter().map(|word| u32::from_le_bytes(*word))
-}
-
-fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(bytes.get(at..at.checked_add(2)?)?.try_into().ok()?))
-}
-
-fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(bytes.get(at..at.checked_add(4)?)?.try_into().ok()?))
 }
 
 impl<'a> Ole<'a> {

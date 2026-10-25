@@ -25,11 +25,16 @@ end
 namespace :test do
   desc 'Unit tests of the core library'
   task :core do
-    sh 'cargo', 'test', '--manifest-path', CARGO_MANIFEST, '--package', 'imprimatur'
+    sh 'cargo', 'test', '--manifest-path', CARGO_MANIFEST, '--package', 'imprimatur', '--all-features'
   end
 
-  desc 'The core library, then the Ruby suite on the compiled extension'
-  task all: %i[core test]
+  desc 'The command line tests'
+  task :cli do
+    sh 'cargo', 'test', '--manifest-path', CARGO_MANIFEST, '--package', 'imprimatur-cli'
+  end
+
+  desc 'The core, command line and Ruby suites on the compiled extension'
+  task all: %i[core cli test]
 end
 
 desc 'dictator, cargo fmt --check and clippy'
@@ -84,6 +89,7 @@ namespace :gems do
 
     mkdir_p File.dirname(staged)
     cp "lib/imprimatur/#{binary}", staged
+    cp 'lib/imprimatur/imprimatur-render-worker', File.dirname(staged)
     mkdir_p 'pkg'
     Bundler.with_unbundled_env do
       sh({ 'IMPRIMATUR_PLATFORM' => platform }, 'gem', 'build', 'imprimatur.gemspec',

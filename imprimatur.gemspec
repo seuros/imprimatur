@@ -14,8 +14,9 @@ Gem::Specification.new do |spec|
 
   spec.summary = 'XLSX, PDF and DOCX authoring, and office documents read back. Let it be printed.'
   spec.description = 'A Ruby DSL over a native core that writes Excel workbooks, and PDF and Word documents ' \
-                     'from one model, with its own XML, zip and PDF writers: no third-party format stack. ' \
+                     'from one model, with its own XML, zip and PDF readers and writers. ' \
                      'It reads PDF, XLSX, XLS, ODS and DOCX back: as Markdown, as typed structure, and their images. ' \
+                     'Full-page PDF rendering uses the pure-Rust Hayro renderer. ' \
                      'Precompiled for Linux, macOS and FreeBSD; CRuby only.'
   spec.homepage = 'https://github.com/seuros/imprimatur'
   spec.license = 'BSD-3-Clause'
@@ -31,6 +32,7 @@ Gem::Specification.new do |spec|
   if platform
     spec.platform = Gem::Platform.new(platform)
     spec.files += Dir['lib/imprimatur/[0-9]*/imprimatur_native.{so,bundle}']
+    spec.files += Dir['lib/imprimatur/[0-9]*/imprimatur-render-worker']
     # The binary is built for one Ruby ABI; other Rubies build the source gem.
     spec.required_ruby_version = ['>= 4.0', '< 4.1.dev']
   else

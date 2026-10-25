@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add native PDF metadata, bounded page reads with explicit failure states,
+  and optional pure-Rust full-page PNG rendering.
+- Keep scanned and blank page structure available without a text layer.
+- Render PDFs through a bundled Rust worker with time, memory and output limits;
+  cancellation kills and reaps it. macOS uses an RSS watchdog, not a hard cap.
+
 ## [0.5.0](https://github.com/seuros/imprimatur/compare/v0.4.0...v0.5.0) (2026-10-18)
 
 

@@ -81,4 +81,28 @@ fn rejects_what_excel_would() {
         Err(Error::InvalidValidation(_))
     );
     assert!(Validation::list(["x".repeat(127), "y".repeat(127)]).is_ok(), "255 with the comma");
+
+    for kind in ["prompt", "error"] {
+        for (title, body, label) in [
+            ("t".repeat(33), String::new(), format!("{kind} title")),
+            (String::new(), "m".repeat(256), kind.to_owned()),
+        ] {
+            let validation = Validation::list(["a"]).unwrap();
+            let result = match kind {
+                "prompt" => validation.prompt(title, body),
+                _ => validation.error(title, body),
+            };
+            assert_matches!(
+                result,
+                Err(Error::InvalidValidation(reason)) if reason.contains(&label),
+                "{kind}: {label}"
+            );
+        }
+        let validation = Validation::list(["a"]).unwrap();
+        let validation = match kind {
+            "prompt" => validation.prompt("t".repeat(32), "m".repeat(255)),
+            _ => validation.error("t".repeat(32), "m".repeat(255)),
+        };
+        assert!(validation.is_ok(), "{kind}: exact limits");
+    }
 }

@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 # Gems ship precompiled, so they carry every feature of the crate.
-imprimatur = { workspace = true, features = ["archive", "fonts", "json"] }
+imprimatur = { workspace = true, features = ["archive", "fonts", "json", "isolation"] }
 serde_json.workspace = true
 magnus.workspace = true
 rb-sys.workspace = true

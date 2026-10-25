@@ -12,6 +12,7 @@ Gemfile.lock
 /lib/imprimatur/**/*.bundle
 /lib/imprimatur/**/*.so
 /lib/imprimatur/**/*.dll
+/lib/imprimatur/**/imprimatur-render-worker
 /ext/**/Makefile
 /ext/**/target/
 *.gem

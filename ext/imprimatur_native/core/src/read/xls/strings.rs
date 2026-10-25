@@ -3,6 +3,7 @@
 //! across `CONTINUE` records.
 
 use crate::Result;
+use crate::bytes::u16_le;
 use crate::pdf::metrics::WIN_ANSI_HIGH;
 use crate::read::Budget;
 
@@ -19,7 +20,7 @@ pub enum Encoding {
 /// the end.
 pub fn string(bytes: &[u8], at: usize, wide_count: bool, encoding: Encoding) -> Option<String> {
     let (count, at) = if wide_count {
-        (usize::from(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?)), at + 2)
+        (usize::from(u16_le(bytes, at)?), at + 2)
     } else {
         (usize::from(*bytes.get(at)?), at + 1)
     };

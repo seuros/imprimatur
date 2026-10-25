@@ -27,6 +27,20 @@ fn validates_content() {
     assert_matches!(doc.table(Table::new([["\u{1b}"]])), Err(Error::ControlCharacter(0x1B)));
     assert!(doc.paragraph("tab\there\nnew line").is_ok());
     assert_eq!(doc.blocks().len(), 1, "rejected content is not added");
+
+    for points in [f64::NAN, f64::NEG_INFINITY, f64::INFINITY, 0.0, 14_401.0] {
+        assert_eq!(size::points_in_range(points), None);
+    }
+    for points in [1.0, 72.0, 14_400.0] {
+        assert_eq!(size::points_in_range(points), Some(points));
+    }
+    for (object, room, expected) in [
+        ((100.0, 50.0), (200.0, 200.0), (100.0, 50.0)),
+        ((100.0, 50.0), (50.0, 100.0), (50.0, 25.0)),
+        ((100.0, 50.0), (100.0, 10.0), (20.0, 10.0)),
+    ] {
+        assert_eq!(size::fit(object, room), expected);
+    }
 }
 
 #[test]

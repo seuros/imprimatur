@@ -1,10 +1,9 @@
 use font_test_data::TINOS_SUBSET;
 
 use super::*;
+use crate::test_support::font::{record, replace, set_u16};
+use std::assert_matches;
 
-/// `Descriptor::read`, `data` loaded as a font first. `Descriptor` has no
-/// `Debug` (nor does `Num`), so callers use `is_ok`/`is_err`/`matches!`
-/// rather than `assert_matches!`, which would need to print it on failure.
 fn descriptor_of(data: &[u8]) -> Result<Descriptor> {
     Descriptor::read(&TrueTypeFont::from_bytes(data).unwrap())
 }
@@ -19,7 +18,7 @@ fn respects_outline_embedding_permissions_without_subsetting() {
     for rights in [2_u16, 0x0200, 0x0204] {
         let mut data = TINOS_SUBSET.to_vec();
         set_u16(&mut data, *b"OS/2", 8, rights);
-        assert!(matches!(descriptor_of(&data), Err(Error::UnsupportedFont(_))));
+        assert_matches!(descriptor_of(&data), Err(Error::UnsupportedFont(_)));
     }
 }
 
@@ -42,7 +41,7 @@ fn rejects_truncated_metadata_and_inverted_bounds() {
         let mut data = TINOS_SUBSET.to_vec();
         let record = record(&data, tag);
         data[record + 12..record + 16].copy_from_slice(&1_u32.to_be_bytes());
-        assert!(matches!(descriptor_of(&data), Err(Error::Malformed { .. })));
+        assert_matches!(descriptor_of(&data), Err(Error::Malformed { .. }));
     }
     let mut data = TINOS_SUBSET.to_vec();
     set_u16(&mut data, *b"head", 36, 32767); // xMin above xMax
@@ -58,10 +57,10 @@ fn names_are_validated_and_escaped_for_pdf() {
     }
     for name in ["", "Bad Name", "Bad/Name", "Bad%Name", "Bad(Name)", "عربي", &"A".repeat(64)] {
         let data = with_name(name);
-        assert!(matches!(
+        assert_matches!(
             descriptor_of(&data),
             Err(Error::UnsupportedFont("no usable PostScript font name"))
-        ));
+        );
     }
 }
 
@@ -70,7 +69,7 @@ fn rejects_odd_utf16_names_and_out_of_bounds_name_strings() {
     for (offset, value) in [(14, 1), (16, u16::MAX)] {
         let mut data = with_name("Example");
         set_u16(&mut data, *b"name", offset, value);
-        assert!(matches!(descriptor_of(&data), Err(Error::Malformed { .. })));
+        assert_matches!(descriptor_of(&data), Err(Error::Malformed { .. }));
     }
 }
 
@@ -84,38 +83,15 @@ fn fixed_pitch_italic_and_serif_flags_come_from_font_metadata() {
     assert_eq!(descriptor.flags, 4 | 1 | 2 | 64);
 }
 
-fn record(data: &[u8], tag: [u8; 4]) -> usize {
-    let font = FontRef::new(data).unwrap();
-    let index = font
-        .table_directory()
-        .table_records()
-        .iter()
-        .position(|record| record.tag() == Tag::new(&tag))
-        .unwrap();
-    12 + 16 * index
-}
-
-fn set_u16(data: &mut [u8], tag: [u8; 4], offset: usize, value: u16) {
-    let record = record(data, tag);
-    let start = u32::from_be_bytes(data[record + 8..record + 12].try_into().unwrap()) as usize;
-    data[start + offset..start + offset + 2].copy_from_slice(&value.to_be_bytes());
-}
-
 fn with_name(name: &str) -> Vec<u8> {
     // A Windows Unicode PostScript name. Mutations leave checksums untouched,
     // like the font-loader tests; these fonts are never used as render fixtures.
     let mut data = TINOS_SUBSET.to_vec();
-    let record = record(&data, *b"name");
     let encoded: Vec<u8> = name.encode_utf16().flat_map(u16::to_be_bytes).collect();
     let mut table = vec![0, 0, 0, 1, 0, 18, 0, 3, 0, 1, 4, 9, 0, 6];
     table.extend_from_slice(&u16::try_from(encoded.len()).unwrap().to_be_bytes());
     table.extend_from_slice(&[0, 0]);
     table.extend_from_slice(&encoded);
-    data.resize(data.len().next_multiple_of(4), 0);
-    let start = u32::try_from(data.len()).unwrap();
-    data[record + 8..record + 12].copy_from_slice(&start.to_be_bytes());
-    data[record + 12..record + 16]
-        .copy_from_slice(&u32::try_from(table.len()).unwrap().to_be_bytes());
-    data.extend_from_slice(&table);
+    replace(&mut data, *b"name", &table);
     data
 }

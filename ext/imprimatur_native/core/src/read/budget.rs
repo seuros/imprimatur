@@ -23,11 +23,11 @@ const TICKS_PER_CHECK: u32 = 4096;
 /// ```
 #[derive(Debug, Clone)]
 pub struct Limits {
-    max_input: usize,
-    max_inflated: u64,
-    max_depth: usize,
-    timeout: Option<Duration>,
-    cancel: Option<Arc<AtomicBool>>,
+    pub(crate) max_input: usize,
+    pub(crate) max_inflated: u64,
+    pub(crate) max_depth: usize,
+    pub(crate) timeout: Option<Duration>,
+    pub(crate) cancel: Option<Arc<AtomicBool>>,
 }
 
 impl Default for Limits {
@@ -127,6 +127,11 @@ impl<'a> Budget<'a> {
         if self.limits.cancel.as_deref().is_some_and(|flag| flag.load(Ordering::Relaxed)) {
             return Err(Error::Cancelled);
         }
+        self.check_time()
+    }
+
+    /// Check elapsed time after a completed worker (SIGCHLD may wake its caller).
+    pub(crate) fn check_time(&self) -> Result<()> {
         if self.deadline.is_some_and(|deadline| Instant::now() >= deadline) {
             return Err(Error::LimitExceeded("time"));
         }

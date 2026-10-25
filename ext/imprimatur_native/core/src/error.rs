@@ -118,6 +118,9 @@ pub enum Error {
     #[error("the document is encrypted with a password")]
     PasswordRequired,
 
+    #[error("invalid PDF option: {0}")]
+    InvalidPdfOption(&'static str),
+
     #[error(transparent)]
     Io(#[from] io::Error),
 }

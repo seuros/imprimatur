@@ -7,10 +7,9 @@ a 40,000-character cell is refused at the door, not discovered by Excel's
 
 - **A Ruby DSL over a native core.** The core is also published on its own,
   as `imprimatur` on crates.io; the gem wraps it.
-- **No third-party format stack.** The XML writer and the zip container are
-  written here, from ECMA-376 and the zip specification; only deflate
-  (`miniz_oxide`) and CRC-32 (`crc32fast`) come from crates, and QR Code and
-  Data Matrix encoding (`qrcode`, `datamatrix`) for barcodes.
+- **Own readers and writers.** XML, zip and PDF reading/writing live here.
+  Optional full-page PDF rendering uses Hayro, a pure-Rust CPU renderer;
+  no Poppler, PDFium, GPU or system fonts are required.
 - **Deterministic.** The same document always gives the same bytes.
 - **Native only.** CRuby 4.0+. No pure Ruby fallback, no JRuby, no TruffleRuby.
 
@@ -333,6 +332,50 @@ pages of headings and paragraphs with their position, a workbook's typed
 cells and comments, a Word document's blocks with their bold, italic and
 linked stretches.
 
+For a PDF without text, `content` still returns every page, its empty
+`blocks` and its `images` count. `markdown` and the text-oriented CLI commands
+still report `NoTextLayer`;
+OCR callers need the structure of scanned and blank pages too.
+
+### Bounded PDF pages and OCR rendering
+
+```ruby
+Imprimatur.pdf_info(upload.download) # => {page_count: 20, encrypted: false}
+result = Imprimatur.pdf_pages(upload.download, first_page: 2, last_page: 10, max_pages: 5)
+result[:pages].each { |page| puts [page[:page], page[:status], page[:text]] }
+png = Imprimatur.render_pdf_page(upload.download, page: 2, max_side: 1568)
+```
+
+`pdf_info` counts actual pages without interpreting their content. `pdf_pages`
+only interprets the selected streams, at most 500 pages by default. Each page
+has `status` (`text`, `empty`, `failed`, `skipped`), `text`, `images` (nil if
+unknown), `truncated` and `reason`. It keeps healthy pages when another is
+damaged. Unlike the tolerant Markdown reader, corrupt Flate streams fail
+explicitly. Limits are 256 KiB of text per page and 8 MiB total
+(`max_page_bytes:`, `max_output_bytes:`); truncation respects UTF-8.
+
+`render_pdf_page` returns an opaque grayscale PNG of the **whole page**, not
+just its scan image; `grayscale: false` keeps color. It bounds the output surface
+before allocation (`max_pixels:`, 4 million) and encoded output
+(`max_output_bytes:`, 8 MiB). Preflight rejects pages drawing more than 40 million
+source-image pixels. Renderer warnings fail instead of silently dropping content.
+The crate exposes `read::pdf::{info, pages, render_page}` (`render` feature) and
+`read::pdf::isolation::render_page_isolated` (`isolation` feature). The latter
+takes an absolute path to the trusted `imprimatur-render-worker` executable.
+The gem bundles that worker and always uses isolated rendering; it never falls
+back to an in-process render or searches PATH.
+
+All three accept the normal read limits. Rendering also accepts `memory_bytes:`
+(1 GiB by default): Linux/FreeBSD enforce an address-space cap; macOS uses a
+sampled RSS watchdog, which can briefly overshoot. A worker is killed and reaped
+on timeout, cancellation or supervisor failure. Rendering has a mandatory
+60-second process ceiling even with `timeout: nil`; a shorter `timeout:` still
+applies. CPU time, output files and core dumps are also limited.
+
+This is resource containment, **not a filesystem/network security sandbox**.
+The raw crate `render_page` remains in-process and cannot interrupt Hayro.
+`max_inflated` bounds our preflight, not Hayro's internal decoders.
+
 ```ruby
 sheet = Imprimatur.content("sales.xlsx")[:sheets].first
 sheet[:rows][1][:cells]
@@ -441,7 +484,7 @@ The core works without Ruby too; see
 
 ```sh
 bundle install
-rake test:all        # cargo test, then the Ruby suite on the compiled extension
+rake test:all        # core, CLI and Ruby suites on the compiled extension
 rake lint            # dictator, cargo fmt --check, clippy
 rake gems:native     # the precompiled gem for this machine, in pkg/
 ```

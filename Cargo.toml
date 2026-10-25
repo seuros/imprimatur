@@ -10,20 +10,35 @@ license = "BSD-3-Clause"
 repository = "https://github.com/seuros/imprimatur"
 
 [workspace.dependencies]
+aes = "0.9.3"
+crc32fast = "1.5.2"
+datamatrix = "0.3.3"
+font-test-data = "0.10.0"
+hayro = { version = "0.8.0", default-features = false, features = ["embed-fonts", "embed-cmaps"] }
 imprimatur = { path = "ext/imprimatur_native/core", version = "0.5.0" }
+libproc = "0.14.11"
 magnus = { version = "0.9.2", default-features = false }
+md-5 = "0.11.0"
+miniz_oxide = "0.9.1"
+nix = { version = "0.31.3", features = ["resource", "process", "signal"] }
+qrcode = { version = "0.14.1", default-features = false }
+read-fonts = "0.45.1"
 # For rb_thread_call_without_gvl2, which magnus does not wrap; magnus's own
 # rb-sys, features and all.
 rb-sys = { version = "0.9.130", default-features = false, features = ["stable-api"] }
 regex = "1.13.1"
 serde_json = "1.0.154"
+sha2 = "0.11.1"
 tempfile = "3"
+thiserror = "2.0.21"
 usage-parser = { package = "usage-lib", version = "7.0.1" }
 usage-rs = "7.0.1"
+zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
 unused_must_use = "warn"
+dead_code_pub_in_binary = "warn"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

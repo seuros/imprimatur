@@ -1,6 +1,37 @@
 //! Helpers shared by the unit tests.
 
+#[cfg(feature = "fonts")]
+pub mod font;
+
 use std::io::{Cursor, Read};
+
+/// Shared PDF/DOCX round-trip fixture.
+pub fn report() -> crate::doc::Document {
+    use crate::doc::{Document, Paragraph, Run, Table};
+
+    let mut doc = Document::new();
+    doc.heading(1, "Quarterly report").unwrap();
+    doc.heading(2, "Sales").unwrap();
+    doc.push_paragraph(
+        Paragraph::new().text("Revenue was ").run(Run::new("up 12%").bold()).text(" this quarter."),
+    )
+    .unwrap();
+    doc.table(Table::new([["Region", "Q1"], ["North", "12.5"]]).header()).unwrap();
+    doc
+}
+
+/// An integer entry in a PDF fixture's dictionary.
+pub fn pdf_integer(dictionary: &str, name: &str) -> usize {
+    dictionary
+        .split(&format!("/{name} "))
+        .nth(1)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap()
+}
 
 /// Every entry of a zip archive as `(name, bytes)`, read with the `zip`
 /// crate: an implementation independent of ours, which verifies each CRC.

@@ -3,6 +3,10 @@ use read_fonts::{FontRef, TableProvider, types::Tag};
 
 use super::{FontMetrics, TrueTypeFont};
 use crate::Error;
+use crate::test_support::font::{
+    offset as table_offset, record as table_record, replace as set_table,
+};
+use std::assert_matches;
 
 #[test]
 fn reads_static_font_metrics_and_unicode_glyphs() {
@@ -107,12 +111,10 @@ fn rejects_legacy_or_symbol_only_cmaps() {
         let cmap = table_offset(&bytes, *b"cmap");
         bytes[cmap + 4..cmap + 6].copy_from_slice(&platform.to_be_bytes());
         bytes[cmap + 6..cmap + 8].copy_from_slice(&encoding.to_be_bytes());
-        // `TrueTypeFont` has no `Debug` (its `read-fonts` table fields don't),
-        // so `assert_matches!` cannot print it on failure.
-        assert!(matches!(
+        assert_matches!(
             TrueTypeFont::from_bytes(&bytes),
             Err(Error::UnsupportedFont("no supported Unicode cmap"))
-        ));
+        );
     }
 }
 
@@ -149,8 +151,7 @@ fn rejects_unsupported_font_formats() {
         b"wOFF",
         b"wOF2",
     ] {
-        // `TrueTypeFont` has no `Debug`; see `rejects_legacy_or_symbol_only_cmaps`.
-        assert!(matches!(TrueTypeFont::from_bytes(bytes), Err(Error::UnsupportedFont(_))));
+        assert_matches!(TrueTypeFont::from_bytes(bytes), Err(Error::UnsupportedFont(_)));
     }
 }
 
@@ -226,40 +227,10 @@ fn validates_short_and_long_outline_offsets() {
 }
 
 fn assert_malformed(bytes: &[u8]) {
-    // `TrueTypeFont` has no `Debug`; see `rejects_legacy_or_symbol_only_cmaps`.
-    assert!(matches!(
+    assert_matches!(
         TrueTypeFont::from_bytes(bytes),
         Err(Error::Malformed { format: "TrueType font", .. })
-    ));
-}
-
-fn table_record(bytes: &[u8], tag: [u8; 4]) -> usize {
-    let font = FontRef::new(bytes).unwrap();
-    let index = font
-        .table_directory()
-        .table_records()
-        .iter()
-        .position(|record| record.tag() == Tag::new(&tag))
-        .unwrap();
-    12 + index * 16
-}
-
-fn table_offset(bytes: &[u8], tag: [u8; 4]) -> usize {
-    let record = table_record(bytes, tag);
-    usize::try_from(u32::from_be_bytes(bytes[record + 8..record + 12].try_into().unwrap())).unwrap()
-}
-
-// Replace a table without rewriting the fixture on disk. Checksums deliberately
-// remain stale: loading does not validate them, and malformed-input tests need
-// to reach the table content checks.
-fn set_table(bytes: &mut Vec<u8>, tag: [u8; 4], table: &[u8]) {
-    let record = table_record(bytes, tag);
-    bytes.resize(bytes.len().next_multiple_of(4), 0);
-    let offset = u32::try_from(bytes.len()).unwrap();
-    let length = u32::try_from(table.len()).unwrap();
-    bytes[record + 8..record + 12].copy_from_slice(&offset.to_be_bytes());
-    bytes[record + 12..record + 16].copy_from_slice(&length.to_be_bytes());
-    bytes.extend_from_slice(table);
+    );
 }
 
 fn cmap12(mappings: &[(char, u32)]) -> Vec<u8> {

@@ -15,6 +15,7 @@ use crate::font::{TrueTypeFont, invalid};
 use crate::pdf::objects::{Num, PdfWriter};
 use crate::{Error, Result};
 
+#[derive(Debug)]
 pub struct Descriptor {
     /// PostScript name, escaped as a PDF name (without its leading slash).
     pub name: String,

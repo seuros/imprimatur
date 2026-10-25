@@ -14,11 +14,28 @@ pub fn decode(
     filters: &[(&[u8], Option<&Dict>)],
     budget: &Budget<'_>,
 ) -> Result<Vec<u8>> {
+    decode_stream(data, filters, budget, false)
+}
+
+pub fn decode_strict(
+    data: &[u8],
+    filters: &[(&[u8], Option<&Dict>)],
+    budget: &Budget<'_>,
+) -> Result<Vec<u8>> {
+    decode_stream(data, filters, budget, true)
+}
+
+fn decode_stream(
+    data: &[u8],
+    filters: &[(&[u8], Option<&Dict>)],
+    budget: &Budget<'_>,
+    strict: bool,
+) -> Result<Vec<u8>> {
     let mut current: Option<Vec<u8>> = None;
     for &(name, params) in filters {
         let input = current.as_deref().unwrap_or(data);
         let output = match name {
-            b"FlateDecode" | b"Fl" => predict(inflate(input, budget)?, params)?,
+            b"FlateDecode" | b"Fl" => predict(inflate(input, budget, strict)?, params)?,
             b"LZWDecode" | b"LZW" => {
                 let early = params
                     .and_then(|params| params.get(b"EarlyChange"))
@@ -48,25 +65,20 @@ pub fn decode(
 
 /// zlib, or raw deflate when the header is missing. A truncated or
 /// corrupt stream yields what inflated before the damage, as viewers show.
-fn inflate(data: &[u8], budget: &Budget<'_>) -> Result<Vec<u8>> {
+fn inflate(data: &[u8], budget: &Budget<'_>, strict: bool) -> Result<Vec<u8>> {
     let zlib = data.len() > 2
         && data[0] & 0x0F == 8
         && (u16::from(data[0]) << 8 | u16::from(data[1])).is_multiple_of(31);
     let expected = data.len().saturating_mul(4);
-    let (output, complete) =
-        crate::read::inflate::inflate(data, zlib, expected, budget.inflatable())?;
-    if complete || !output.is_empty() {
-        return Ok(output);
-    }
-    if zlib {
-        // A header that only looked like zlib's: try the bytes as raw deflate.
-        let (output, _) =
-            crate::read::inflate::inflate(data, false, expected, budget.inflatable())?;
-        if !output.is_empty() {
+    // Retry apparent zlib data as raw deflate.
+    for header in std::iter::once(zlib).chain(zlib.then_some(false)) {
+        let (output, complete) =
+            crate::read::inflate::inflate(data, header, expected, budget.inflatable())?;
+        if complete || (!strict && !output.is_empty()) {
             return Ok(output);
         }
     }
-    Err(malformed("a stream does not inflate"))
+    Err(malformed("an incomplete or corrupt Flate stream"))
 }
 
 /// Undoes a PNG (10 and up) or TIFF (2) predictor.

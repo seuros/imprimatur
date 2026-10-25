@@ -57,24 +57,36 @@ pub struct Validation {
     allow_blank: bool,
     dropdown: bool,
     alert: Alert,
-    prompt_title: Option<String>,
-    prompt: Option<String>,
-    error_title: Option<String>,
-    error: Option<String>,
+    prompt: Message,
+    error: Message,
+}
+
+/// A prompt or alert.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+struct Message {
+    title: Option<String>,
+    body: Option<String>,
+}
+
+impl Message {
+    fn new(kind: &str, title: String, body: String) -> Result<Self> {
+        Ok(Self {
+            title: text(&format!("{kind} title"), title, MAX_TITLE)?,
+            body: text(kind, body, MAX_MESSAGE)?,
+        })
+    }
 }
 
 impl Validation {
-    const fn new(kind: Kind, formula: String) -> Self {
+    fn new(kind: Kind, formula: String) -> Self {
         Self {
             kind,
             formula,
             allow_blank: true,
             dropdown: true,
             alert: Alert::Stop,
-            prompt_title: None,
-            prompt: None,
-            error_title: None,
-            error: None,
+            prompt: Message::default(),
+            error: Message::default(),
         }
     }
 
@@ -155,8 +167,7 @@ impl Validation {
     /// [`Error::InvalidValidation`] for a title over 32 characters or a
     /// message over 255.
     pub fn prompt(mut self, title: impl Into<String>, message: impl Into<String>) -> Result<Self> {
-        self.prompt_title = text("prompt title", title.into(), MAX_TITLE)?;
-        self.prompt = text("prompt", message.into(), MAX_MESSAGE)?;
+        self.prompt = Message::new("prompt", title.into(), message.into())?;
         Ok(self)
     }
 
@@ -166,8 +177,7 @@ impl Validation {
     /// # Errors
     /// As [`prompt`](Self::prompt).
     pub fn error(mut self, title: impl Into<String>, message: impl Into<String>) -> Result<Self> {
-        self.error_title = text("error title", title.into(), MAX_TITLE)?;
-        self.error = text("error", message.into(), MAX_MESSAGE)?;
+        self.error = Message::new("error", title.into(), message.into())?;
         Ok(self)
     }
 
@@ -193,17 +203,17 @@ impl Validation {
         if self.kind == Kind::List && !self.dropdown {
             attrs.push(("showDropDown", "1"));
         }
-        if self.prompt_title.is_some() || self.prompt.is_some() {
+        if self.prompt.title.is_some() || self.prompt.body.is_some() {
             attrs.push(("showInputMessage", "1"));
         }
         if self.alert != Alert::Off {
             attrs.push(("showErrorMessage", "1"));
         }
         let texts = [
-            ("errorTitle", &self.error_title),
-            ("error", &self.error),
-            ("promptTitle", &self.prompt_title),
-            ("prompt", &self.prompt),
+            ("errorTitle", &self.error.title),
+            ("error", &self.error.body),
+            ("promptTitle", &self.prompt.title),
+            ("prompt", &self.prompt.body),
         ]
         .map(|(name, value)| (name, value.as_deref().map(escape)));
         for (name, value) in &texts {

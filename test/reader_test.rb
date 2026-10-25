@@ -79,6 +79,7 @@ class ReaderTest < Minitest::Test
 
     assert_equal 'Body text.', page[:blocks].first[:text]
     assert_operator page[:blocks].first[:bounds][:left], :<, page[:blocks].first[:bounds][:right]
+    assert_equal [{ page: 1, blocks: [], images: 1 }], Imprimatur.content(figure)[:pages]
   end
 
   def test_extracts_images
@@ -177,6 +178,7 @@ class ReaderTest < Minitest::Test
     scanned = Imprimatur.pdf { it.paragraph(' ') }
 
     assert_raises(Imprimatur::NoTextLayer) { Imprimatur.markdown(scanned) }
+    assert_equal [{ page: 1, blocks: [], images: 0 }], Imprimatur.content(scanned)[:pages]
     assert_raises(Imprimatur::UnsupportedDocument) { Imprimatur.markdown("\0\0 not a document".b) }
     damaged = assert_raises(Imprimatur::Error) { Imprimatur.markdown("PK\x03\x04 truncated".b) }
     legacy = assert_raises(Imprimatur::Error) { Imprimatur.markdown("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1 cut".b) }
