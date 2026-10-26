@@ -57,5 +57,5 @@ pub(super) fn content(data: &[u8], budget: &Budget<'_>) -> Result<Vec<Page>> {
             Err(_) => lines.push(layout::PageLines::default()),
         }
     }
-    Ok(layout::pages(&lines))
+    Ok(layout::pages(&lines, budget.drop_repeated()))
 }

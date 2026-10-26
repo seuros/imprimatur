@@ -23,6 +23,67 @@ fn pdf(text: &str) -> Vec<u8> {
     doc.to_pdf().unwrap()
 }
 
+fn pdf_of(objects: &[Vec<u8>]) -> Vec<u8> {
+    let mut out = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
+    let mut offsets = Vec::new();
+    for (number, body) in (1..).zip(objects) {
+        offsets.push(out.len());
+        writeln!(out, "{number} 0 obj").unwrap();
+        out.extend_from_slice(body);
+        out.extend_from_slice(b"\nendobj\n");
+    }
+    let xref = out.len();
+    write!(out, "xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).unwrap();
+    for offset in offsets {
+        writeln!(out, "{offset:010} 00000 n ").unwrap();
+    }
+    write!(
+        out,
+        "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+        objects.len() + 1
+    )
+    .unwrap();
+    out
+}
+
+fn stream_object(data: &[u8]) -> Vec<u8> {
+    let mut out = format!("<< /Length {} >>\nstream\n", data.len()).into_bytes();
+    out.extend_from_slice(data);
+    out.extend_from_slice(b"\nendstream");
+    out
+}
+
+fn watermarked_pdf(pages: usize) -> Vec<u8> {
+    let first_page = 4_usize;
+    let first_content = first_page + pages;
+    let kids: Vec<String> = (0..pages).map(|index| format!("{} 0 R", first_page + index)).collect();
+    let mut objects = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        format!("<< /Type /Pages /Kids [{}] /Count {pages} >>", kids.join(" ")).into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+            .to_vec(),
+    ];
+    for index in 0..pages {
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+                 /Resources << /Font << /F1 3 0 R >> >> /Contents {} 0 R >>",
+                first_content + index
+            )
+            .into_bytes(),
+        );
+    }
+    for index in 0..pages {
+        let letter = char::from(b'A' + u8::try_from(index).unwrap());
+        let content = format!(
+            "BT /F1 36 Tf 0 1 -1 0 300 400 Tm (WATERMARK) Tj ET \
+             BT /F1 12 Tf 1 0 0 1 72 700 Tm (Body page {letter}) Tj ET"
+        );
+        objects.push(stream_object(content.as_bytes()));
+    }
+    pdf_of(&objects)
+}
+
 /// A sheet of typed cells, one with a comment.
 fn ledger() -> Vec<u8> {
     let mut book = Workbook::new();
@@ -352,4 +413,17 @@ fn prints_completions_and_its_spec() {
     assert!(zsh.stdout_text().contains("imprimatur"), "{}", zsh.stdout_text());
     let spec = command!("imprimatur", "__usage_spec__").assert_success();
     assert!(spec.stdout_text().contains("\nbin imprimatur\n"), "{}", spec.stdout_text());
+}
+
+#[test]
+fn drops_repeated_watermark_fragments_only_with_the_flag() {
+    let dir = files(&[("stamped.pdf", &watermarked_pdf(5))]);
+    let off = command!("imprimatur", "md", &path(&dir, "stamped.pdf")).assert_success();
+    assert!(off.stdout_text().contains("WATERMARK"), "{}", off.stdout_text());
+    assert!(off.stdout_text().contains("Body page E"), "{}", off.stdout_text());
+
+    let on = command!("imprimatur", "md", "--drop-repeated", &path(&dir, "stamped.pdf"))
+        .assert_success();
+    assert!(!on.stdout_text().contains("WATERMARK"), "{}", on.stdout_text());
+    assert!(on.stdout_text().contains("Body page E"), "{}", on.stdout_text());
 }

@@ -29,6 +29,10 @@ use crate::app::{self, App, Out, Status};
 /// (number, date, bool, text, error, formula) and comments; a Word
 /// document's blocks (heading, paragraph, list item, table) with the byte
 /// ranges of their bold, italic and linked text.
+///
+/// With `--drop-repeated` on a PDF, text that sits at the same spot on most
+/// pages is dropped wherever it falls, not only in the top and bottom
+/// margins: diagonal or rotated watermark stamps included. Off by default.
 #[derive(Args, Debug)]
 #[usage(
     effect = "read",
@@ -38,7 +42,8 @@ use crate::app::{self, App, Out, Status};
     example("imprimatur markdown audit.pdf", help = "Print a PDF's text"),
     example("imprimatur md -o notes/ *.docx", help = "Write notes/NAME.md for each"),
     example("curl -s $URL | imprimatur md -", help = "Read standard input"),
-    example("imprimatur --json md sales.xlsx", help = "Typed cells, as JSON")
+    example("imprimatur --json md sales.xlsx", help = "Typed cells, as JSON"),
+    example("imprimatur md --drop-repeated stamped.pdf", help = "Drop a repeated watermark")
 )]
 pub struct Markdown {
     /// Documents to read; `-` reads standard input
@@ -49,6 +54,11 @@ pub struct Markdown {
     #[usage(short = 'o', long, value_name = "DIR", value_hint = usage_rs::ValueHint::DirPath)]
     pub output: Option<PathBuf>,
 
+    /// PDF: drop text repeated at the same spot on most pages, anywhere on
+    /// the page (watermarks); off by default
+    #[usage(long)]
+    pub drop_repeated: bool,
+
     #[usage(flatten)]
     pub limits: LimitFlags,
 }
@@ -58,7 +68,7 @@ impl RunWith<&App> for Markdown {
 
     fn run_with(self, app: &App) -> ExitCode {
         let limits = match self.limits.checked() {
-            Ok(limits) => limits,
+            Ok(limits) => limits.drop_repeated(self.drop_repeated),
             Err(status) => return status,
         };
         if let Some(directory) = &self.output

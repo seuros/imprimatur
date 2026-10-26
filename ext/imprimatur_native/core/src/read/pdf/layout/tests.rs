@@ -2,19 +2,33 @@ use super::*;
 
 /// A page of `(text, baseline, size, in the margin)` lines.
 fn page(lines: &[(&str, f64, f64, bool)]) -> PageLines {
+    positioned(
+        &lines
+            .iter()
+            .map(|&(text, y, size, margin)| (text, 72.0, y, size, 0, margin))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// A page of `(text, left, baseline, size, turns, in the margin)` lines, its
+/// repeat key set as [`repeat_key`] would.
+fn positioned(lines: &[(&str, f64, f64, f64, u8, bool)]) -> PageLines {
     let mut page = PageLines { height: 792.0, ..PageLines::default() };
-    for &(text, y, size, margin) in lines {
+    for &(text, left, y, size, turns, margin) in lines {
         let span = span::append(&mut page.text, |page| page.push_str(text));
-        let margin = if margin { margin_key(text) } else { 0 };
+        let slice = span::slice(&page.text, &span);
+        let margin = if margin { margin_key(slice) } else { 0 };
+        let repeat = repeat_key(slice, left, y, turns);
         page.lines.push(Line {
             span,
             y,
-            left: 72.0,
-            right: 300.0,
+            left,
+            right: left + 228.0,
             size,
             bold: false,
-            turns: 0,
+            turns,
             margin,
+            repeat,
         });
     }
     page
@@ -83,7 +97,7 @@ fn joins_lines_into_paragraphs_and_headings() {
         ("Mail us.", 624.0, 10.0, false),
         ("# not a heading", 580.0, 10.0, false),
     ]);
-    let pages = pages(&[page]);
+    let pages = pages(&[page], false);
     let bounds: Vec<Option<[f64; 4]>> = pages[0]
         .blocks
         .iter()
@@ -101,7 +115,7 @@ fn joins_lines_into_paragraphs_and_headings() {
 
     let mut turned = self::page(&[("Sideways", 300.0, 10.0, false)]);
     turned.lines[0].turns = 1;
-    assert_eq!(super::pages(&[turned])[0].blocks[0].bounds, None);
+    assert_eq!(super::pages(&[turned], false)[0].blocks[0].bounds, None);
 }
 
 #[test]
@@ -114,7 +128,57 @@ fn removes_running_lines_from_page_margins() {
             ])
         })
         .collect();
-    let text = crate::read::content::Content::Pdf(super::pages(&pages)).to_markdown();
+    let text = crate::read::content::Content::Pdf(super::pages(&pages, false)).to_markdown();
     assert!(!text.contains("Page"), "{text}");
     assert!(text.contains("Body 4"), "{text}");
+}
+
+#[test]
+fn drops_text_repeated_anywhere_only_when_enabled() {
+    let pages: Vec<PageLines> = (1..=5)
+        .map(|number| {
+            let letter = char::from(b'A' + u8::try_from(number - 1).unwrap());
+            let body = format!("Body page {letter}");
+            positioned(&[
+                (&body, 72.0, 700.0, 10.0, 0, false),
+                ("WATERMARK", 330.0, 400.0, 36.0, 1, false),
+            ])
+        })
+        .collect();
+    let off = crate::read::content::Content::Pdf(super::pages(&pages, false)).to_markdown();
+    assert!(off.contains("WATERMARK"), "{off}");
+    let on = crate::read::content::Content::Pdf(super::pages(&pages, true)).to_markdown();
+    assert!(!on.contains("WATERMARK"), "{on}");
+    assert!(on.contains("Body page E"), "{on}");
+}
+
+#[test]
+fn keeps_text_that_moves_around_the_page() {
+    let pages: Vec<PageLines> = (1..=5)
+        .map(|number| {
+            let body = format!("Body {number}");
+            let left = f64::from(number).mul_add(60.0, 72.0);
+            let y = f64::from(number).mul_add(60.0, 300.0);
+            positioned(&[(&body, 72.0, 700.0, 10.0, 0, false), ("MATCH", left, y, 12.0, 0, false)])
+        })
+        .collect();
+    let text = crate::read::content::Content::Pdf(super::pages(&pages, true)).to_markdown();
+    assert!(text.contains("MATCH"), "{text}");
+}
+
+#[test]
+fn keeps_repeats_below_the_page_count_threshold() {
+    let pages: Vec<PageLines> = (1..=5)
+        .map(|number| {
+            let body = format!("Body {number}");
+            let mut lines: Vec<(&str, f64, f64, f64, u8, bool)> =
+                vec![(&body, 72.0, 700.0, 10.0, 0, false)];
+            if number == 1 {
+                lines.push(("RARE", 330.0, 400.0, 36.0, 1, false));
+            }
+            positioned(&lines)
+        })
+        .collect();
+    let text = crate::read::content::Content::Pdf(super::pages(&pages, true)).to_markdown();
+    assert!(text.contains("RARE"), "{text}");
 }
