@@ -55,7 +55,7 @@ fn page(page: &Page) -> Json {
             object
         })
         .collect();
-    json!({ "page": page.number, "images": page.images, "blocks": blocks })
+    json!({ "page": page.number, "label": page.label, "images": page.images, "blocks": blocks })
 }
 
 /// An image's description, its data left out: `format`, `width`, `height`,

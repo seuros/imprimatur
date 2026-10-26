@@ -72,6 +72,7 @@ pub struct Page {
     pub number: u32,
     pub blocks: Vec<Placed>,
     pub images: u32,
+    pub label: Option<String>,
 }
 
 /// A block and where it lies on its page.

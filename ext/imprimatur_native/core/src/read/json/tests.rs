@@ -67,10 +67,11 @@ fn places_blocks_and_marks_their_stretches() {
             Placed { block: Block::Paragraph { text }, bounds: None },
         ],
         images: 2,
+        label: None,
     }]);
     let expected = json!({
         "format": "pdf",
-        "pages": [{ "page": 1, "images": 2, "blocks": [
+        "pages": [{ "page": 1, "label": null, "images": 2, "blocks": [
             { "type": "heading", "level": 1, "text": "Scope",
               "bounds": { "left": 72.0, "top": 100.0, "right": 300.0, "bottom": 112.5 } },
             { "type": "paragraph", "text": "see here", "marks": [
