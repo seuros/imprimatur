@@ -82,14 +82,9 @@ pub fn lines(page: &PageText) -> PageLines {
         glyphs.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.total_cmp(&b.0)));
         let mut start = 0;
         while start < glyphs.len() {
-            let (_, baseline, first) = glyphs[start];
-            let mut end = start + 1;
-            while end < glyphs.len() {
-                let (_, y, glyph) = glyphs[end];
-                if (baseline - y).abs() > 0.45 * first.size.max(glyph.size) {
-                    break;
-                }
-                end += 1;
+            let mut end = row_end(&glyphs, start);
+            if let Some(merged) = attach_superscript(&glyphs, start, end) {
+                end = merged;
             }
             let row = &mut glyphs[start..end];
             row.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -106,6 +101,54 @@ pub fn lines(page: &PageText) -> PageLines {
         }
     }
     out
+}
+
+fn row_end(glyphs: &[(f64, f64, &Glyph)], start: usize) -> usize {
+    let (_, baseline, first) = glyphs[start];
+    let mut end = start + 1;
+    while end < glyphs.len() {
+        let (_, y, glyph) = glyphs[end];
+        if (baseline - y).abs() > 0.45 * first.size.max(glyph.size) {
+            break;
+        }
+        end += 1;
+    }
+    end
+}
+
+const SUPERSCRIPT_GLYPHS: usize = 3;
+const SUPERSCRIPT_SIZE_RATIO: f64 = 0.85;
+
+fn attach_superscript(glyphs: &[(f64, f64, &Glyph)], start: usize, end: usize) -> Option<usize> {
+    if end - start > SUPERSCRIPT_GLYPHS || end >= glyphs.len() {
+        return None;
+    }
+    let row = &glyphs[start..end];
+    let (_, baseline, _) = glyphs[start];
+    let (next_x, next_y, next) = glyphs[end];
+    let base_size = next.size;
+    let candidate_size = row.iter().map(|&(_, _, glyph)| glyph.size).fold(0.0, f64::max);
+    let raised = baseline - next_y;
+    if raised <= 0.0 || raised > base_size.max(candidate_size) {
+        return None;
+    }
+    if row.iter().any(|&(_, _, glyph)| glyph.size > SUPERSCRIPT_SIZE_RATIO * base_size) {
+        return None;
+    }
+    let row_left = row.iter().map(|&(x, _, _)| x).fold(f64::MAX, f64::min);
+    let row_right = row.iter().map(|&(x, _, glyph)| x + glyph.width).fold(f64::MIN, f64::max);
+    let next_right = next_x + next.width;
+    let gap = if row_left >= next_right {
+        row_left - next_right
+    } else if next_x >= row_right {
+        next_x - row_right
+    } else {
+        return None;
+    };
+    if gap > WORD_GAP * base_size.max(1.0) {
+        return None;
+    }
+    Some(row_end(glyphs, end))
 }
 
 /// Whether a page reads right to left: more of its letters, those in the
