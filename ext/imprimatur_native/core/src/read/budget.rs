@@ -28,6 +28,7 @@ pub struct Limits {
     pub(crate) max_depth: usize,
     pub(crate) timeout: Option<Duration>,
     pub(crate) cancel: Option<Arc<AtomicBool>>,
+    pub(crate) drop_repeated: bool,
 }
 
 impl Default for Limits {
@@ -38,6 +39,7 @@ impl Default for Limits {
             max_depth: 256,
             timeout: Some(Duration::from_mins(1)),
             cancel: None,
+            drop_repeated: false,
         }
     }
 }
@@ -79,6 +81,15 @@ impl Limits {
         self.cancel = Some(flag);
         self
     }
+
+    /// For a PDF: drop text that repeats at the same spot on most pages
+    /// anywhere on the page, not only in the top and bottom margins. Off by
+    /// default.
+    #[must_use]
+    pub const fn drop_repeated(mut self, drop: bool) -> Self {
+        self.drop_repeated = drop;
+        self
+    }
 }
 
 /// One read's consumption. Single-threaded: a read runs on one thread.
@@ -98,6 +109,10 @@ impl<'a> Budget<'a> {
 
     pub const fn max_depth(&self) -> usize {
         self.limits.max_depth
+    }
+
+    pub const fn drop_repeated(&self) -> bool {
+        self.limits.drop_repeated
     }
 
     /// Decompressed bytes still allowed.

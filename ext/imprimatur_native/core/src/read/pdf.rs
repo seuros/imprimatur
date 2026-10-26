@@ -58,5 +58,5 @@ pub(super) fn content(data: &[u8], budget: &Budget<'_>) -> Result<Vec<Page>> {
         }
     }
     let labels = document.page_labels(lines.len())?;
-    Ok(layout::pages(&lines, labels.as_deref()))
+    Ok(layout::pages(&lines, labels.as_deref(), budget.drop_repeated()))
 }

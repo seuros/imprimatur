@@ -20,6 +20,7 @@ use crate::script::Counts;
 const EDGE: f64 = 0.09;
 /// A gap wider than this share of the font size separates words.
 const WORD_GAP: f64 = 0.18;
+const POSITION_BUCKET: f64 = 3.0;
 
 /// A line of a page, its text a span of the page's buffer.
 #[derive(Debug, Clone)]
@@ -36,6 +37,9 @@ pub struct Line {
     /// In the top or bottom margin of an upright page: a hash of the text,
     /// digits aside, to spot running headers and footers. 0 elsewhere.
     pub margin: u64,
+    /// A hash of the text and its bucketed position and direction, to spot
+    /// anything else that repeats at the same spot on most pages.
+    pub repeat: u64,
 }
 
 /// A page's lines and their text (one buffer for all of them), its height
@@ -222,7 +226,9 @@ fn line<'p>(
     let (left, y, _) = row[0];
     let span = span::end(&out.text[..start])..span::end(&out.text);
     let bold = bold * 2 > count;
-    out.lines.push(Line { span, y, left, right, size, bold, turns, margin: 0 });
+    let text = span::slice(&out.text, &span);
+    let repeat = repeat_key(text, left, y, turns);
+    out.lines.push(Line { span, y, left, right, size, bold, turns, margin: 0, repeat });
 }
 
 /// A hash of a line's text with digits as `#` and ASCII letters lowercased
@@ -235,13 +241,34 @@ fn margin_key(text: &str) -> u64 {
     hash.max(1)
 }
 
+#[expect(clippy::cast_possible_truncation, reason = "page coordinates fit in i64")]
+fn repeat_key(text: &str, left: f64, y: f64, turns: u8) -> u64 {
+    let bucket = |value: f64| (value / POSITION_BUCKET).round() as i64;
+    let mut hash = margin_key(text);
+    for part in [u64::from(turns), bucket(left).cast_unsigned(), bucket(y).cast_unsigned()] {
+        hash = (hash ^ part).wrapping_mul(0x0100_0000_01b3);
+    }
+    hash.max(1)
+}
+
 /// The document's pages, from their lines: blocks of the lines that are
-/// not running headers or footers.
-pub fn pages(pages: &[PageLines], labels: Option<&[Option<String>]>) -> Vec<Page> {
-    let boilerplate = running_lines(pages);
-    let kept = |line: &&Line| line.margin == 0 || boilerplate.binary_search(&line.margin).is_err();
-    let body = body_size(pages, &kept);
-    let levels = heading_sizes(pages, &kept, body);
+/// not running headers or footers, and, with `drop_repeated_anywhere`, not
+/// text repeated at the same spot on most pages anywhere on the page.
+pub fn pages(
+    pages: &[PageLines],
+    labels: Option<&[Option<String>]>,
+    drop_repeated_anywhere: bool,
+) -> Vec<Page> {
+    let boilerplate = repeated_keys(pages, |line| line.margin);
+    let margin_kept =
+        |line: &&Line| line.margin == 0 || boilerplate.binary_search(&line.margin).is_err();
+    let repeated =
+        if drop_repeated_anywhere { repeated_keys(pages, |line| line.repeat) } else { Vec::new() };
+    let kept = |line: &&Line| {
+        margin_kept(line) && (repeated.is_empty() || repeated.binary_search(&line.repeat).is_err())
+    };
+    let body = body_size(pages, &margin_kept);
+    let levels = heading_sizes(pages, &margin_kept, body);
     let mut out = Vec::with_capacity(pages.len());
     let mut paragraph: Vec<&Line> = Vec::new();
     // Each page's blocks, collected here, then moved out at their size.
@@ -405,9 +432,9 @@ fn bounds(page: &PageLines, lines: &[&Line]) -> Option<Bounds> {
     Some(Bounds { left, top, right, bottom })
 }
 
-/// Text that repeats in the margins of many pages (page numbers, running
-/// titles), digits aside: their margin keys, sorted.
-fn running_lines(pages: &[PageLines]) -> Vec<u64> {
+/// The keys `key` returns for lines that repeat on enough pages to be
+/// boilerplate rather than coincidence, sorted.
+fn repeated_keys(pages: &[PageLines], key: impl Fn(&Line) -> u64) -> Vec<u64> {
     if pages.len() < 3 {
         return Vec::new();
     }
@@ -415,7 +442,7 @@ fn running_lines(pages: &[PageLines]) -> Vec<u64> {
     let mut seen: Vec<u64> = Vec::new();
     for page in pages {
         seen.clear();
-        seen.extend(page.lines.iter().map(|line| line.margin).filter(|&key| key != 0));
+        seen.extend(page.lines.iter().map(&key).filter(|&key| key != 0));
         seen.sort_unstable();
         seen.dedup();
         for &key in &seen {
@@ -423,10 +450,10 @@ fn running_lines(pages: &[PageLines]) -> Vec<u64> {
         }
     }
     let threshold = (pages.len() * 2 / 5).max(3);
-    let mut running: Vec<u64> =
+    let mut repeated: Vec<u64> =
         counts.into_iter().filter(|&(_, count)| count >= threshold).map(|(key, _)| key).collect();
-    running.sort_unstable();
-    running
+    repeated.sort_unstable();
+    repeated
 }
 
 /// Every page's lines that `kept` keeps.

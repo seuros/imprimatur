@@ -4,21 +4,44 @@ use super::*;
 
 /// A page of `(text, baseline, size, in the margin)` lines.
 fn page(lines: &[(&str, f64, f64, bool)]) -> PageLines {
-    bold_page(
+    positioned(
         &lines
             .iter()
-            .map(|&(text, y, size, margin)| (text, y, size, margin, false))
+            .map(|&(text, y, size, margin)| (text, 72.0, y, size, 0, margin, false))
             .collect::<Vec<_>>(),
     )
 }
 
 /// A page of `(text, baseline, size, in the margin, bold)` lines.
 fn bold_page(lines: &[(&str, f64, f64, bool, bool)]) -> PageLines {
+    positioned(
+        &lines
+            .iter()
+            .map(|&(text, y, size, margin, bold)| (text, 72.0, y, size, 0, margin, bold))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// A page of `(text, left, baseline, size, turns, in the margin, bold)`
+/// lines, its repeat key set as [`repeat_key`] would.
+fn positioned(lines: &[(&str, f64, f64, f64, u8, bool, bool)]) -> PageLines {
     let mut page = PageLines { height: 792.0, ..PageLines::default() };
-    for &(text, y, size, margin, bold) in lines {
+    for &(text, left, y, size, turns, margin, bold) in lines {
         let span = span::append(&mut page.text, |page| page.push_str(text));
-        let margin = if margin { margin_key(text) } else { 0 };
-        page.lines.push(Line { span, y, left: 72.0, right: 300.0, size, bold, turns: 0, margin });
+        let slice = span::slice(&page.text, &span);
+        let margin = if margin { margin_key(slice) } else { 0 };
+        let repeat = repeat_key(slice, left, y, turns);
+        page.lines.push(Line {
+            span,
+            y,
+            left,
+            right: left + 228.0,
+            size,
+            bold,
+            turns,
+            margin,
+            repeat,
+        });
     }
     page
 }
@@ -137,7 +160,7 @@ fn joins_lines_into_paragraphs_and_headings() {
         ("Mail us.", 624.0, 10.0, false),
         ("# not a heading", 580.0, 10.0, false),
     ]);
-    let pages = pages(&[page], None);
+    let pages = pages(&[page], None, false);
     let bounds: Vec<Option<[f64; 4]>> = pages[0]
         .blocks
         .iter()
@@ -155,7 +178,7 @@ fn joins_lines_into_paragraphs_and_headings() {
 
     let mut turned = self::page(&[("Sideways", 300.0, 10.0, false)]);
     turned.lines[0].turns = 1;
-    assert_eq!(super::pages(&[turned], None)[0].blocks[0].bounds, None);
+    assert_eq!(super::pages(&[turned], None, false)[0].blocks[0].bounds, None);
 }
 
 #[test]
@@ -168,7 +191,7 @@ fn removes_running_lines_from_page_margins() {
             ])
         })
         .collect();
-    let out = super::pages(&pages, None);
+    let out = super::pages(&pages, None, false);
     let text = crate::read::content::Content::Pdf(out.clone()).to_markdown();
     assert!(!text.contains("Page"), "{text}");
     assert!(text.contains("Body 4"), "{text}");
@@ -184,7 +207,7 @@ fn falls_back_to_a_lone_footer_that_looks_like_a_page_number() {
         })
         .collect();
     let labels: Vec<Option<String>> =
-        super::pages(&pages, None).into_iter().map(|page| page.label).collect();
+        super::pages(&pages, None, false).into_iter().map(|page| page.label).collect();
     assert_eq!(labels, [Some("-i-".to_owned()), Some("-ii-".to_owned()), Some("7".to_owned())]);
 }
 
@@ -192,7 +215,7 @@ fn falls_back_to_a_lone_footer_that_looks_like_a_page_number() {
 fn skips_a_footer_with_more_than_one_candidate() {
     let page =
         page(&[("Body", 700.0, 10.0, false), ("-i-", 20.0, 8.0, true), ("3", 18.0, 8.0, true)]);
-    assert_eq!(super::pages(&[page, self::page(&[]), self::page(&[])], None)[0].label, None);
+    assert_eq!(super::pages(&[page, self::page(&[]), self::page(&[])], None, false)[0].label, None);
 }
 
 #[test]
@@ -207,7 +230,7 @@ fn promotes_a_bold_numbered_heading_at_body_size() {
         ),
         ("6.2.1 SFDP Header: 1st DWORD", 600.0, 10.0, false, true),
     ]);
-    let pages = super::pages(&[page], None);
+    let pages = super::pages(&[page], None, false);
     assert_matches!(
         &pages[0].blocks[1].block,
         Block::Heading { level: 3, text } if text.text == "6.2.1 SFDP Header: 1st DWORD"
@@ -228,7 +251,7 @@ fn does_not_promote_a_toc_entrys_dot_leader() {
         ),
         (&entry, 600.0, 10.0, false, true),
     ]);
-    let pages = super::pages(&[page], None);
+    let pages = super::pages(&[page], None, false);
     assert_matches!(&pages[0].blocks[1].block, Block::Paragraph { .. });
 }
 
@@ -244,9 +267,62 @@ fn a_large_numbered_heading_is_not_double_counted() {
         ),
         ("6.2 SFDP Header", 600.0, 14.0, false, true),
     ]);
-    let pages = super::pages(&[page], None);
+    let pages = super::pages(&[page], None, false);
     assert_matches!(
         &pages[0].blocks[1].block,
         Block::Heading { level: 1, text } if text.text == "6.2 SFDP Header"
     );
+}
+
+#[test]
+fn drops_text_repeated_anywhere_only_when_enabled() {
+    let pages: Vec<PageLines> = (1..=5)
+        .map(|number| {
+            let letter = char::from(b'A' + u8::try_from(number - 1).unwrap());
+            let body = format!("Body page {letter}");
+            positioned(&[
+                (&body, 72.0, 700.0, 10.0, 0, false, false),
+                ("WATERMARK", 330.0, 400.0, 36.0, 1, false, false),
+            ])
+        })
+        .collect();
+    let off = crate::read::content::Content::Pdf(super::pages(&pages, None, false)).to_markdown();
+    assert!(off.contains("WATERMARK"), "{off}");
+    let on = crate::read::content::Content::Pdf(super::pages(&pages, None, true)).to_markdown();
+    assert!(!on.contains("WATERMARK"), "{on}");
+    assert!(on.contains("Body page E"), "{on}");
+}
+
+#[test]
+fn keeps_text_that_moves_around_the_page() {
+    let pages: Vec<PageLines> = (1..=5)
+        .map(|number| {
+            let body = format!("Body {number}");
+            let left = f64::from(number).mul_add(60.0, 72.0);
+            let y = f64::from(number).mul_add(60.0, 300.0);
+            positioned(&[
+                (&body, 72.0, 700.0, 10.0, 0, false, false),
+                ("MATCH", left, y, 12.0, 0, false, false),
+            ])
+        })
+        .collect();
+    let text = crate::read::content::Content::Pdf(super::pages(&pages, None, true)).to_markdown();
+    assert!(text.contains("MATCH"), "{text}");
+}
+
+#[test]
+fn keeps_repeats_below_the_page_count_threshold() {
+    let pages: Vec<PageLines> = (1..=5)
+        .map(|number| {
+            let body = format!("Body {number}");
+            let mut lines: Vec<(&str, f64, f64, f64, u8, bool, bool)> =
+                vec![(&body, 72.0, 700.0, 10.0, 0, false, false)];
+            if number == 1 {
+                lines.push(("RARE", 330.0, 400.0, 36.0, 1, false, false));
+            }
+            positioned(&lines)
+        })
+        .collect();
+    let text = crate::read::content::Content::Pdf(super::pages(&pages, None, true)).to_markdown();
+    assert!(text.contains("RARE"), "{text}");
 }
