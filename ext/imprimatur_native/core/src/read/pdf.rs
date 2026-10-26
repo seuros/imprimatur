@@ -57,5 +57,6 @@ pub(super) fn content(data: &[u8], budget: &Budget<'_>) -> Result<Vec<Page>> {
             Err(_) => lines.push(layout::PageLines::default()),
         }
     }
-    Ok(layout::pages(&lines))
+    let labels = document.page_labels(lines.len())?;
+    Ok(layout::pages(&lines, labels.as_deref()))
 }

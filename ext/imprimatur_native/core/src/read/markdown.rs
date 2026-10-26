@@ -48,7 +48,14 @@ fn pdf(out: &mut String, pages: &[Page]) {
         if page.number > 1 {
             end_block(out);
             // Writing to a String cannot fail.
-            let _ = writeln!(out, "<!-- page {} -->", page.number);
+            match &page.label {
+                Some(label) => {
+                    let _ = writeln!(out, "<!-- page {} (label {label}) -->", page.number);
+                }
+                None => {
+                    let _ = writeln!(out, "<!-- page {} -->", page.number);
+                }
+            }
         }
         write_blocks(out, page.blocks.iter().map(|placed| &placed.block), Mode::Body);
     }

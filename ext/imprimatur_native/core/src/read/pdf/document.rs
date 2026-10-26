@@ -1,6 +1,7 @@
 //! A PDF file's objects on demand: loaded once and shared, decrypted, and
 //! their streams decoded; then the pages, with what they inherit.
 
+mod labels;
 mod pages;
 
 use std::borrow::Cow;

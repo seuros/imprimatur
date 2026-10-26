@@ -237,7 +237,7 @@ fn margin_key(text: &str) -> u64 {
 
 /// The document's pages, from their lines: blocks of the lines that are
 /// not running headers or footers.
-pub fn pages(pages: &[PageLines]) -> Vec<Page> {
+pub fn pages(pages: &[PageLines], labels: Option<&[Option<String>]>) -> Vec<Page> {
     let boilerplate = running_lines(pages);
     let kept = |line: &&Line| line.margin == 0 || boilerplate.binary_search(&line.margin).is_err();
     let body = body_size(pages, &kept);
@@ -246,7 +246,7 @@ pub fn pages(pages: &[PageLines]) -> Vec<Page> {
     let mut paragraph: Vec<&Line> = Vec::new();
     // Each page's blocks, collected here, then moved out at their size.
     let mut blocks = Vec::new();
-    for (number, page) in (1..).zip(pages) {
+    for (index, (number, page)) in (1..).zip(pages).enumerate() {
         paragraph.clear();
         for line in page.lines.iter().filter(kept) {
             if let Some(last) = paragraph.last()
@@ -266,9 +266,37 @@ pub fn pages(pages: &[PageLines]) -> Vec<Page> {
             reason = "`blocks` keeps its buffer for the next page"
         )]
         let blocks = blocks.drain(..).collect();
-        out.push(Page { number, blocks, images: page.images });
+        let label = labels.map_or_else(
+            || footer_label(page, &boilerplate),
+            |labels| labels.get(index).cloned().flatten(),
+        );
+        out.push(Page { number, blocks, images: page.images, label });
     }
     out
+}
+
+fn footer_label(page: &PageLines, boilerplate: &[u64]) -> Option<String> {
+    let mut candidates = page.lines.iter().filter(|line: &&Line| {
+        line.margin != 0
+            && line.y < page.height * EDGE
+            && boilerplate.binary_search(&line.margin).is_err()
+    });
+    let line = candidates.next()?;
+    if candidates.next().is_some() {
+        return None;
+    }
+    let text = page.text(line).trim();
+    looks_like_page_number(text).then(|| text.to_owned())
+}
+
+fn looks_like_page_number(text: &str) -> bool {
+    let core = text.trim_matches(|ch: char| !ch.is_alphanumeric());
+    !core.is_empty()
+        && core.len() <= 8
+        && (core.chars().all(|ch| ch.is_ascii_digit())
+            || core.chars().all(|ch| {
+                matches!(ch.to_ascii_lowercase(), 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm')
+            }))
 }
 
 /// Whether `next` carries on the paragraph `last` is in: same direction,

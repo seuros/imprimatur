@@ -137,7 +137,7 @@ fn joins_lines_into_paragraphs_and_headings() {
         ("Mail us.", 624.0, 10.0, false),
         ("# not a heading", 580.0, 10.0, false),
     ]);
-    let pages = pages(&[page]);
+    let pages = pages(&[page], None);
     let bounds: Vec<Option<[f64; 4]>> = pages[0]
         .blocks
         .iter()
@@ -155,7 +155,7 @@ fn joins_lines_into_paragraphs_and_headings() {
 
     let mut turned = self::page(&[("Sideways", 300.0, 10.0, false)]);
     turned.lines[0].turns = 1;
-    assert_eq!(super::pages(&[turned])[0].blocks[0].bounds, None);
+    assert_eq!(super::pages(&[turned], None)[0].blocks[0].bounds, None);
 }
 
 #[test]
@@ -168,9 +168,31 @@ fn removes_running_lines_from_page_margins() {
             ])
         })
         .collect();
-    let text = crate::read::content::Content::Pdf(super::pages(&pages)).to_markdown();
+    let out = super::pages(&pages, None);
+    let text = crate::read::content::Content::Pdf(out.clone()).to_markdown();
     assert!(!text.contains("Page"), "{text}");
     assert!(text.contains("Body 4"), "{text}");
+    assert!(out.iter().all(|page| page.label.is_none()), "{out:?}");
+}
+
+#[test]
+fn falls_back_to_a_lone_footer_that_looks_like_a_page_number() {
+    let pages: Vec<PageLines> = [("-i-", 1), ("-ii-", 2), ("7", 3)]
+        .into_iter()
+        .map(|(footer, number)| {
+            page(&[(&format!("Body {number}"), 700.0, 10.0, false), (footer, 20.0, 8.0, true)])
+        })
+        .collect();
+    let labels: Vec<Option<String>> =
+        super::pages(&pages, None).into_iter().map(|page| page.label).collect();
+    assert_eq!(labels, [Some("-i-".to_owned()), Some("-ii-".to_owned()), Some("7".to_owned())]);
+}
+
+#[test]
+fn skips_a_footer_with_more_than_one_candidate() {
+    let page =
+        page(&[("Body", 700.0, 10.0, false), ("-i-", 20.0, 8.0, true), ("3", 18.0, 8.0, true)]);
+    assert_eq!(super::pages(&[page, self::page(&[]), self::page(&[])], None)[0].label, None);
 }
 
 #[test]
@@ -185,7 +207,7 @@ fn promotes_a_bold_numbered_heading_at_body_size() {
         ),
         ("6.2.1 SFDP Header: 1st DWORD", 600.0, 10.0, false, true),
     ]);
-    let pages = super::pages(&[page]);
+    let pages = super::pages(&[page], None);
     assert_matches!(
         &pages[0].blocks[1].block,
         Block::Heading { level: 3, text } if text.text == "6.2.1 SFDP Header: 1st DWORD"
@@ -206,7 +228,7 @@ fn does_not_promote_a_toc_entrys_dot_leader() {
         ),
         (&entry, 600.0, 10.0, false, true),
     ]);
-    let pages = super::pages(&[page]);
+    let pages = super::pages(&[page], None);
     assert_matches!(&pages[0].blocks[1].block, Block::Paragraph { .. });
 }
 
@@ -222,7 +244,7 @@ fn a_large_numbered_heading_is_not_double_counted() {
         ),
         ("6.2 SFDP Header", 600.0, 14.0, false, true),
     ]);
-    let pages = super::pages(&[page]);
+    let pages = super::pages(&[page], None);
     assert_matches!(
         &pages[0].blocks[1].block,
         Block::Heading { level: 1, text } if text.text == "6.2 SFDP Header"
