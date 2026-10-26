@@ -11,6 +11,20 @@
 - Allow a bounded exit grace when macOS cannot inspect an exiting worker;
   persistent monitor failures still terminate and reap a live worker.
 
+## [0.7.0](https://github.com/seuros/imprimatur/compare/v0.6.1...v0.7.0) (2026-10-26)
+
+
+### Features
+
+* **pdf:** add --drop-repeated to remove watermarks anywhere on the page ([8ea82c9](https://github.com/seuros/imprimatur/commit/8ea82c98f6b507ff7ffd296f8e0ec8f30aed529f))
+* **pdf:** emit printed page labels from /PageLabels or footer text ([f761555](https://github.com/seuros/imprimatur/commit/f76155578acfc8514465b93b5b019df100d54de7))
+* **pdf:** recognize numbered sections as headings in markdown output ([341f651](https://github.com/seuros/imprimatur/commit/341f651631b74ff93879f9eba71d0874ae261fd1))
+
+
+### Bug Fixes
+
+* **pdf:** keep ordinal superscripts attached to their base text ([21fbb51](https://github.com/seuros/imprimatur/commit/21fbb510f90ab7c029d22e4e396b887fa66e16c6))
+
 ## [0.6.1](https://github.com/seuros/imprimatur/compare/v0.6.0...v0.6.1) (2026-10-25)
 
 
