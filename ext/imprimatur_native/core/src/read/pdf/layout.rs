@@ -288,41 +288,79 @@ fn continues(last: &Line, next: &Line) -> bool {
 fn block(page: &PageLines, lines: &[&Line], body: f64, levels: &[f64]) -> Placed {
     let first = lines[0];
     let length: usize = lines.iter().map(|line| line.span.len()).sum();
-    let level = if lines.len() <= 3 && length <= 200 {
-        levels.iter().position(|&size| first.size >= size - 0.25)
-    } else {
-        None
-    };
-    let mut text = String::with_capacity(length + lines.len());
-    let block = if let Some(level) = level.filter(|_| first.size >= body * 1.15) {
-        for (index, line) in lines.iter().enumerate() {
-            if index > 0 {
-                text.push(' ');
-            }
-            text.push_str(page.text(line));
-        }
-        let level = u8::try_from(level.min(2) + 1).unwrap_or(3);
-        Block::Heading { level, text: Text::plain(text) }
-    } else {
-        for (index, line) in lines.iter().enumerate() {
-            let line = page.text(line);
-            if index > 0 {
-                let joined = text.ends_with('-') && {
-                    let mut before = text.chars().rev().skip(1);
-                    before.next().is_some_and(char::is_lowercase)
-                        && line.chars().next().is_some_and(char::is_lowercase)
-                };
-                if joined {
-                    text.pop();
-                } else {
-                    text.push('\n');
-                }
-            }
-            text.push_str(line);
-        }
-        Block::Paragraph { text: Text::plain(text) }
+    let short = lines.len() <= 3 && length <= 200;
+    let text = paragraph_text(page, lines);
+    let level =
+        if short { levels.iter().position(|&size| first.size >= size - 0.25) } else { None };
+    let sized = level
+        .filter(|_| first.size >= body * 1.15)
+        .map(|level| u8::try_from(level.min(2) + 1).unwrap_or(3));
+    let numbered = (short && first.bold && first.size >= body - 0.25)
+        .then(|| numbered_heading_level(&text))
+        .flatten();
+    let block = match sized.or(numbered) {
+        Some(level) => Block::Heading { level, text: Text::plain(text) },
+        None => Block::Paragraph { text: Text::plain(text) },
     };
     Placed { block, bounds: bounds(page, lines) }
+}
+
+fn paragraph_text(page: &PageLines, lines: &[&Line]) -> String {
+    let length: usize = lines.iter().map(|line| line.span.len()).sum();
+    let mut text = String::with_capacity(length + lines.len());
+    for (index, line) in lines.iter().enumerate() {
+        let line = page.text(line);
+        if index > 0 {
+            let joined = text.ends_with('-') && {
+                let mut before = text.chars().rev().skip(1);
+                before.next().is_some_and(char::is_lowercase)
+                    && line.chars().next().is_some_and(char::is_lowercase)
+            };
+            if joined {
+                text.pop();
+            } else {
+                text.push('\n');
+            }
+        }
+        text.push_str(line);
+    }
+    text
+}
+
+fn numbered_heading_level(text: &str) -> Option<u8> {
+    let (depth, rest) = numbered_prefix(text)?;
+    if depth < 2 || !(rest.is_empty() || rest.starts_with(' ')) {
+        return None;
+    }
+    let title = rest.trim_start();
+    if title.contains("....") || title.starts_with(|ch: char| !ch.is_alphanumeric()) {
+        return None;
+    }
+    Some(u8::try_from(depth).unwrap_or(6).min(6))
+}
+
+fn numbered_prefix(text: &str) -> Option<(usize, &str)> {
+    let bytes = text.as_bytes();
+    let mut groups = 0_usize;
+    let mut pos = 0_usize;
+    loop {
+        let start = pos;
+        while bytes.get(pos).is_some_and(u8::is_ascii_digit) {
+            pos += 1;
+        }
+        if pos == start {
+            break;
+        }
+        groups += 1;
+        if groups >= 4
+            || bytes.get(pos) != Some(&b'.')
+            || !bytes.get(pos + 1).is_some_and(u8::is_ascii_digit)
+        {
+            break;
+        }
+        pos += 1;
+    }
+    (groups > 0).then(|| (groups, &text[pos..]))
 }
 
 /// Where upright lines lie on the page, from its top-left corner: from the

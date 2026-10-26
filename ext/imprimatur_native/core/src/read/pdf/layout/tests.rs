@@ -1,21 +1,24 @@
+use std::assert_matches;
+
 use super::*;
 
 /// A page of `(text, baseline, size, in the margin)` lines.
 fn page(lines: &[(&str, f64, f64, bool)]) -> PageLines {
+    bold_page(
+        &lines
+            .iter()
+            .map(|&(text, y, size, margin)| (text, y, size, margin, false))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// A page of `(text, baseline, size, in the margin, bold)` lines.
+fn bold_page(lines: &[(&str, f64, f64, bool, bool)]) -> PageLines {
     let mut page = PageLines { height: 792.0, ..PageLines::default() };
-    for &(text, y, size, margin) in lines {
+    for &(text, y, size, margin, bold) in lines {
         let span = span::append(&mut page.text, |page| page.push_str(text));
         let margin = if margin { margin_key(text) } else { 0 };
-        page.lines.push(Line {
-            span,
-            y,
-            left: 72.0,
-            right: 300.0,
-            size,
-            bold: false,
-            turns: 0,
-            margin,
-        });
+        page.lines.push(Line { span, y, left: 72.0, right: 300.0, size, bold, turns: 0, margin });
     }
     page
 }
@@ -168,4 +171,60 @@ fn removes_running_lines_from_page_margins() {
     let text = crate::read::content::Content::Pdf(super::pages(&pages)).to_markdown();
     assert!(!text.contains("Page"), "{text}");
     assert!(text.contains("Body 4"), "{text}");
+}
+
+#[test]
+fn promotes_a_bold_numbered_heading_at_body_size() {
+    let page = bold_page(&[
+        (
+            "Body text at the common size used throughout this short document.",
+            700.0,
+            10.0,
+            false,
+            false,
+        ),
+        ("6.2.1 SFDP Header: 1st DWORD", 600.0, 10.0, false, true),
+    ]);
+    let pages = super::pages(&[page]);
+    assert_matches!(
+        &pages[0].blocks[1].block,
+        Block::Heading { level: 3, text } if text.text == "6.2.1 SFDP Header: 1st DWORD"
+    );
+}
+
+#[test]
+fn does_not_promote_a_toc_entrys_dot_leader() {
+    let dots = ".".repeat(120);
+    let entry = format!("6.2.1 SFDP Header: 1st DWORD {dots} 13");
+    let page = bold_page(&[
+        (
+            "Body text at the common size used throughout this short document.",
+            700.0,
+            10.0,
+            false,
+            false,
+        ),
+        (&entry, 600.0, 10.0, false, true),
+    ]);
+    let pages = super::pages(&[page]);
+    assert_matches!(&pages[0].blocks[1].block, Block::Paragraph { .. });
+}
+
+#[test]
+fn a_large_numbered_heading_is_not_double_counted() {
+    let page = bold_page(&[
+        (
+            "Body text at the common size used throughout this short document.",
+            700.0,
+            10.0,
+            false,
+            false,
+        ),
+        ("6.2 SFDP Header", 600.0, 14.0, false, true),
+    ]);
+    let pages = super::pages(&[page]);
+    assert_matches!(
+        &pages[0].blocks[1].block,
+        Block::Heading { level: 1, text } if text.text == "6.2 SFDP Header"
+    );
 }
