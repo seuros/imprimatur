@@ -48,7 +48,7 @@ GITHUB_REPO = 'seuros/imprimatur'
 RUBYGEMS_VERSIONS_URL = "https://rubygems.org/api/v1/versions/#{GEMSPEC.name}.json".freeze
 # What the release workflow builds: the source gem and one gem per platform.
 # FreeBSD's platform carries the release it was built on.
-RELEASE_PLATFORMS = ['ruby', 'x86_64-linux-gnu', 'aarch64-linux-gnu', 'x86_64-linux-musl', 'aarch64-linux-musl',
+RELEASE_PLATFORMS = ['ruby', 'x86_64-linux-gnu', 'aarch64-linux-gnu',
                      'arm64-darwin', 'x86_64-darwin', /freebsd/].freeze
 
 # The gems in pkg/ for a version, by the platform each was built for.

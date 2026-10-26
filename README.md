@@ -32,7 +32,7 @@ end
 gem "imprimatur"
 ```
 
-Precompiled gems ship for Linux (x86_64 and aarch64, glibc 2.34+ and musl),
+Precompiled gems ship for Linux (x86_64 and aarch64, glibc 2.34+),
 macOS 13+ (arm64, x86_64) and FreeBSD 15.1 (amd64): nothing to compile.
 Anywhere else, the source gem compiles the extension on install, with the
 toolchain from [rustup.rs](https://rustup.rs) (1.99+).
