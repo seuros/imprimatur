@@ -11,6 +11,18 @@
 - Allow a bounded exit grace when macOS cannot inspect an exiting worker;
   persistent monitor failures still terminate and reap a live worker.
 
+## [0.8.0](https://github.com/seuros/imprimatur/compare/v0.7.0...v0.8.0) (2026-10-27)
+
+
+### Features
+
+* **reader:** accept drop_repeated in the Ruby API ([4e537d6](https://github.com/seuros/imprimatur/commit/4e537d641bafd8d3cdb8b1c20d16f4cb766ad073))
+
+
+### Bug Fixes
+
+* **pdf:** read printed page numbers from headers too, not just footers ([c036434](https://github.com/seuros/imprimatur/commit/c0364341ee8fc36be2c97d25fd06da0aa76a4ad6))
+
 ## [0.7.0](https://github.com/seuros/imprimatur/compare/v0.6.1...v0.7.0) (2026-10-26)
 
 
