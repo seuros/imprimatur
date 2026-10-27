@@ -25,15 +25,19 @@ struct Read<T, F> {
 }
 
 /// Called by `Imprimatur.markdown`, which owns the keyword interface.
-/// `timeout` is in seconds; `nil` limits keep their defaults.
+/// `timeout` is in seconds; `nil` limits keep their defaults. `drop_repeated`
+/// drops PDF text repeated at the same spot on most pages, anywhere on the
+/// page (watermarks); off by default.
 pub fn markdown_native(
     ruby: &Ruby,
     document: RString,
     max_input: Option<usize>,
     max_inflated: Option<u64>,
     timeout: Option<f64>,
+    drop_repeated: bool,
 ) -> Result<RString, Error> {
-    let text = without_gvl(ruby, document, (max_input, max_inflated, timeout), markdown)?;
+    let text =
+        without_gvl(ruby, document, (max_input, max_inflated, timeout, drop_repeated), markdown)?;
     Ok(ruby.str_new(&text))
 }
 
@@ -45,9 +49,11 @@ pub fn content_native(
     max_input: Option<usize>,
     max_inflated: Option<u64>,
     timeout: Option<f64>,
+    drop_repeated: bool,
     styles: bool,
 ) -> Result<RString, Error> {
-    let read = without_gvl(ruby, document, (max_input, max_inflated, timeout), content)?;
+    let read =
+        without_gvl(ruby, document, (max_input, max_inflated, timeout, drop_repeated), content)?;
     let options = json::Options { styles };
     Ok(ruby.str_new(&Json::Object(json::content_with(&read, options)).to_string()))
 }
@@ -60,9 +66,13 @@ pub fn images_native(
     max_input: Option<usize>,
     max_inflated: Option<u64>,
     timeout: Option<f64>,
+    drop_repeated: bool,
 ) -> Result<RArray, Error> {
-    let found =
-        without_gvl(ruby, document, (max_input, max_inflated, timeout), |bytes, limits| {
+    let found = without_gvl(
+        ruby,
+        document,
+        (max_input, max_inflated, timeout, drop_repeated),
+        |bytes, limits| {
             let mut found = Vec::new();
             images(bytes, limits, |image| {
                 let description = Json::Object(json::image(&image)).to_string();
@@ -70,7 +80,8 @@ pub fn images_native(
                 Ok(())
             })?;
             Ok(found)
-        })?;
+        },
+    )?;
     let pairs = ruby.ary_new_capa(found.len());
     for (data, description) in found {
         let pair = [
@@ -86,9 +97,14 @@ pub fn images_native(
 fn limits(
     ruby: &Ruby,
     cancel: &Arc<AtomicBool>,
-    (max_input, max_inflated, timeout): (Option<usize>, Option<u64>, Option<f64>),
+    (max_input, max_inflated, timeout, drop_repeated): (
+        Option<usize>,
+        Option<u64>,
+        Option<f64>,
+        bool,
+    ),
 ) -> Result<Limits, Error> {
-    let mut limits = Limits::default().cancel_on(Arc::clone(cancel));
+    let mut limits = Limits::default().cancel_on(Arc::clone(cancel)).drop_repeated(drop_repeated);
     if let Some(bytes) = max_input {
         limits = limits.max_input(bytes);
     }
@@ -107,7 +123,7 @@ fn limits(
 pub fn without_gvl<T, F>(
     ruby: &Ruby,
     document: RString,
-    keywords: (Option<usize>, Option<u64>, Option<f64>),
+    keywords: (Option<usize>, Option<u64>, Option<f64>, bool),
     job: F,
 ) -> Result<T, Error>
 where

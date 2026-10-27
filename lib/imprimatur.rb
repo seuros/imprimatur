@@ -72,6 +72,8 @@ module Imprimatur
     # @param timeout [Numeric, nil] seconds the read may take (60), +nil+ for none
     # @param max_bytes [Integer, nil] the largest document accepted (512 MiB)
     # @param max_inflated [Integer, nil] decompressed bytes allowed in all (1 GiB)
+    # @param drop_repeated [Boolean] PDF only: drop text repeated at the same
+    #   spot on most pages, anywhere on the page (watermarks); off by default
     # @return [String] Markdown, UTF-8
     # @raise [NoTextLayer] a PDF of scanned pages: run OCR instead
     # @raise [PasswordRequired] a PDF that needs a password to open

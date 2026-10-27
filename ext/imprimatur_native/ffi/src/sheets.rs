@@ -23,9 +23,11 @@ pub fn sheets_native(
     max_input: Option<usize>,
     max_inflated: Option<u64>,
     timeout: Option<f64>,
+    drop_repeated: bool,
     styles: bool,
 ) -> Result<RArray, Error> {
-    let read = without_gvl(ruby, document, (max_input, max_inflated, timeout), content)?;
+    let read =
+        without_gvl(ruby, document, (max_input, max_inflated, timeout, drop_repeated), content)?;
     let Some(sheets) = read.sheets() else {
         let kind = if matches!(read, Content::Pdf(_)) { "a PDF" } else { "a Word document" };
         let error = imprimatur::Error::UnsupportedDocument(format!("{kind} is no spreadsheet"));

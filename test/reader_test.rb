@@ -38,6 +38,34 @@ class ReaderTest < Minitest::Test
 
   def stream(dict, data) = "<< #{dict} /Length #{data.bytesize} >>\nstream\n".b + data.b + "\nendstream".b
 
+  # 3 pages, a "WATERMARK" drawn at the same spot in the middle of each
+  # (not a header or footer), and body text that tells them apart.
+  def stamped
+    pages = %w[A B C]
+    contents = pages.map do |letter|
+      stream('', "BT /F1 12 Tf 72 700 Td (Body #{letter}) Tj ET " \
+                  'BT /F1 36 Tf 150 400 Td (WATERMARK) Tj ET')
+    end
+    objects = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 /MediaBox [0 0 612 792] " \
+      '/Resources << /Font << /F1 9 0 R >> >> >>',
+      '<< /Type /Page /Parent 2 0 R /Contents 6 0 R >>',
+      '<< /Type /Page /Parent 2 0 R /Contents 7 0 R >>',
+      '<< /Type /Page /Parent 2 0 R /Contents 8 0 R >>',
+      *contents,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+    ]
+    pdf = "%PDF-1.7\n".b
+    offsets = objects.each_with_index.map do |object, index|
+      pdf.size.tap { pdf << "#{index + 1} 0 obj\n".b << object.b << "\nendobj\n".b }
+    end
+    xref = pdf.size
+    pdf << "xref\n0 #{objects.size + 1}\n0000000000 65535 f \n"
+    offsets.each { pdf << format("%010d 00000 n \n", it) }
+    pdf << "trailer\n<< /Size #{objects.size + 1} /Root 1 0 R >>\nstartxref\n#{xref}\n%%EOF\n"
+  end
+
   def test_reads_workbooks_documents_and_pdfs
     assert_equal <<~MARKDOWN, Imprimatur.markdown(workbook)
       ## Sales
@@ -57,6 +85,20 @@ class ReaderTest < Minitest::Test
     assert_equal "# Report\n\nBody text.\n", Imprimatur.markdown(docx)
     assert_equal "# Report\n\nBody text.\n", Imprimatur.markdown(pdf)
     assert_equal Encoding::UTF_8, Imprimatur.markdown(pdf).encoding
+  end
+
+  def test_drop_repeated_removes_a_watermark_anywhere_on_the_page
+    pdf = stamped
+
+    off = Imprimatur.markdown(pdf)
+    assert_includes off, 'WATERMARK', 'off by default'
+
+    on = Imprimatur.markdown(pdf, drop_repeated: true)
+    refute_includes on, 'WATERMARK'
+    assert_includes on, 'Body C'
+
+    assert_includes Imprimatur.content(pdf, drop_repeated: true)[:pages].flat_map { |page| page[:blocks] }
+                               .map { it[:text] }.join, 'Body C'
   end
 
   def test_reads_the_structure

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::read::without_gvl;
 
-type Keywords = (Option<usize>, Option<u64>, Option<f64>);
+type Keywords = (Option<usize>, Option<u64>, Option<f64>, bool);
 
 pub fn info(
     ruby: &Ruby,

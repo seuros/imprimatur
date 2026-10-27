@@ -41,8 +41,8 @@ module Imprimatur
     end
 
     # @api private
-    def self.limits(timeout: 60, max_bytes: nil, max_inflated: nil)
-      [max_bytes, max_inflated, timeout && Float(timeout)]
+    def self.limits(timeout: 60, max_bytes: nil, max_inflated: nil, drop_repeated: false)
+      [max_bytes, max_inflated, timeout && Float(timeout), drop_repeated ? true : false]
     end
 
     # A path or an IO is read no further than +max_bytes+ (one byte past it
