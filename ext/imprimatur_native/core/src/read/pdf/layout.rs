@@ -293,27 +293,41 @@ pub fn pages(
             reason = "`blocks` keeps its buffer for the next page"
         )]
         let blocks = blocks.drain(..).collect();
-        let label = labels.map_or_else(
-            || footer_label(page, &boilerplate),
-            |labels| labels.get(index).cloned().flatten(),
-        );
+        let label = labels
+            .map_or_else(|| printed_label(page), |labels| labels.get(index).cloned().flatten());
         out.push(Page { number, blocks, images: page.images, label });
     }
     out
 }
 
-fn footer_label(page: &PageLines, boilerplate: &[u64]) -> Option<String> {
-    let mut candidates = page.lines.iter().filter(|line: &&Line| {
-        line.margin != 0
-            && line.y < page.height * EDGE
-            && boilerplate.binary_search(&line.margin).is_err()
-    });
-    let line = candidates.next()?;
-    if candidates.next().is_some() {
+/// The page's own printed label, from a single header or footer line that
+/// looks like one: a bare page number or roman numeral ("`-i-`", "`7`"), or
+/// the same after a short label word ("`Page 70`" -> "`70`"). Unlike the
+/// boilerplate this document's other margin lines are checked against, a
+/// running "`Page 70`", "`Page 71`", ... header is not noise here: each
+/// instance *is* that page's label, not a repeated line to drop.
+fn printed_label(page: &PageLines) -> Option<String> {
+    let mut candidates =
+        page.lines.iter().filter(|line: &&Line| line.margin != 0).filter_map(|line| {
+            let text = page.text(line).trim();
+            page_number_label(text)
+        });
+    let label = candidates.next()?;
+    candidates.next().is_none().then_some(label)
+}
+
+/// `text` as a page label, if it looks like one, stripped of a leading
+/// label word such as "Page" when there is one.
+fn page_number_label(text: &str) -> Option<String> {
+    if looks_like_page_number(text) {
+        return Some(text.to_owned());
+    }
+    let word_end = text.find(|ch: char| !ch.is_ascii_alphabetic())?;
+    if word_end == 0 {
         return None;
     }
-    let text = page.text(line).trim();
-    looks_like_page_number(text).then(|| text.to_owned())
+    let rest = text[word_end..].trim_start_matches(|ch: char| !ch.is_alphanumeric());
+    looks_like_page_number(rest).then(|| rest.to_owned())
 }
 
 fn looks_like_page_number(text: &str) -> bool {

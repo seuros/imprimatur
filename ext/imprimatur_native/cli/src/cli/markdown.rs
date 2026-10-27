@@ -16,7 +16,8 @@ use crate::app::{self, App, Out, Status};
 /// PDF: the text layer, placed glyph by glyph, with headings by font size,
 /// running headers and footers left out, and pages after the first marked
 /// `<!-- page N -->` (or `<!-- page N (label L) -->` with its printed page
-/// label, from `/PageLabels` or a footer that looks like one). Encrypted
+/// label, from `/PageLabels` or a header or footer line that looks like
+/// one). Encrypted
 /// PDFs open when their user password is empty. XLSX, XLS and ODS: each
 /// sheet as a table, values as shown, then its comments. DOCX: headings,
 /// lists, emphasis, links and tables.

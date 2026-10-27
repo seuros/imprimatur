@@ -1,5 +1,27 @@
 use super::*;
-use crate::read::content::{Mark, Note, Value};
+use crate::read::content::{Mark, Note, Placed, Value};
+
+#[test]
+fn keeps_an_empty_pages_marker_so_the_page_count_still_matches() {
+    // `--drop-repeated` (or a genuinely blank page) can leave a page with no
+    // blocks; its `<!-- page N -->` marker must still show up, or a caller
+    // mapping markers back to PDF page numbers loses the count.
+    let page = |number, text: &str| Page {
+        number,
+        blocks: if text.is_empty() {
+            vec![]
+        } else {
+            vec![Placed { block: Block::Paragraph { text: Text::plain(text) }, bounds: None }]
+        },
+        images: 0,
+        label: None,
+    };
+    let pages = [page(1, "Body 1"), page(2, ""), page(3, "Body 3")];
+    assert_eq!(
+        Content::Pdf(pages.to_vec()).to_markdown(),
+        "Body 1\n\n<!-- page 2 -->\n\n<!-- page 3 -->\n\nBody 3\n"
+    );
+}
 
 #[test]
 fn writes_sparse_tables() {

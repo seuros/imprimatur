@@ -44,7 +44,10 @@ pub enum Mode {
 }
 
 fn pdf(out: &mut String, pages: &[Page]) {
-    for page in pages.iter().filter(|page| !page.blocks.is_empty()) {
+    // Every page past the first gets its marker, blocks or none: an empty
+    // page (left bare by `--drop-repeated`, or genuinely blank) still needs
+    // one, so the markers stay a reliable page count and index.
+    for page in pages {
         if page.number > 1 {
             end_block(out);
             // Writing to a String cannot fail.

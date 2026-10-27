@@ -195,7 +195,36 @@ fn removes_running_lines_from_page_margins() {
     let text = crate::read::content::Content::Pdf(out.clone()).to_markdown();
     assert!(!text.contains("Page"), "{text}");
     assert!(text.contains("Body 4"), "{text}");
-    assert!(out.iter().all(|page| page.label.is_none()), "{out:?}");
+    let labels: Vec<Option<String>> = out.iter().map(|page| page.label.clone()).collect();
+    assert_eq!(
+        labels,
+        ["1", "2", "3", "4"].map(|label| Some(label.to_owned())),
+        "a running \"Page N\" line is each page's own label, not noise: {out:?}"
+    );
+}
+
+#[test]
+fn reads_a_printed_page_number_from_a_header_behind_running_boilerplate() {
+    // A running title repeats on every page (dropped as boilerplate); the
+    // printed page number sits on its own line underneath, in the header,
+    // and varies the way boilerplate normally doesn't (so it is not itself
+    // excluded as boilerplate) — the body pages of the JEDEC-style PDF this
+    // models never agreed with the PDF's own page index.
+    let pages: Vec<PageLines> = [68, 69, 70, 71, 72]
+        .into_iter()
+        .map(|printed| {
+            page(&[
+                ("JEDEC Standard No. 216H", 760.0, 8.0, true),
+                (&format!("Page {printed}"), 745.0, 8.0, true),
+                (&format!("Body {printed}"), 700.0, 10.0, false),
+            ])
+        })
+        .collect();
+    let out = super::pages(&pages, None, false);
+    let text = crate::read::content::Content::Pdf(out.clone()).to_markdown();
+    assert!(!text.contains("JEDEC"), "the running title is boilerplate: {text}");
+    let labels: Vec<Option<String>> = out.iter().map(|page| page.label.clone()).collect();
+    assert_eq!(labels, ["68", "69", "70", "71", "72"].map(|label| Some(label.to_owned())));
 }
 
 #[test]
