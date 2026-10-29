@@ -1,6 +1,7 @@
 use std::assert_matches;
 
 use super::*;
+use crate::read::content::Block;
 
 /// A page of `(text, baseline, size, in the margin)` lines.
 fn page(lines: &[(&str, f64, f64, bool)]) -> PageLines {
