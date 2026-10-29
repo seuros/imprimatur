@@ -384,6 +384,28 @@ after metadata was read preserves completed pages and explicitly marks the
 unreached pages; an expired overall deadline marks them `skipped`. Cancellation
 still raises rather than returning a partial successful call.
 
+For timeout-neighbour recovery, opt in to a shorter worker-attempt budget:
+
+```ruby
+Imprimatur.pdf_pages(bytes, timeout: 300, batch_timeout: 60)
+```
+
+Here `timeout:` is the **overall** deadline, including recovery; `batch_timeout:`
+caps the initial worker and each singleton retry. Completed pages survive a
+batch timeout. Unread later neighbours are tried once before the first missing
+page (which may have stalled the worker). Recovery is best effort, never an
+extension of the overall deadline. Output-limit skips are not retried, and all
+attempts share `max_output_bytes:`. Input, depth, process-memory and per-page
+limits still apply; `max_inflated:` remains per worker/recovery attempt, not a
+cumulative decompression allowance.
+
+With `batch_timeout:` enabled, an explicit finite `timeout:` replaces the
+ordinary 60-second process ceiling for this call; `timeout: nil` retains that
+60-second ceiling. Both budgets must be positive; zero overall time still fails
+immediately. Omitting `batch_timeout:` preserves the existing behaviour. Rust
+callers can use `pages_isolated_recovering` with an explicit attempt duration
+and overall `Limits`/`ProcessLimits`.
+
 This is resource containment, **not a filesystem/network security sandbox**.
 The raw crate `info`, `pages` and `render_page` APIs remain in-process;
 `render_page` cannot interrupt Hayro.

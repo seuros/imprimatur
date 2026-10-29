@@ -165,6 +165,7 @@ pub(super) fn failure(error: &Error) -> (u8, String) {
     let kind = match error {
         Error::PasswordRequired => 1,
         Error::UnsupportedDocument(_) => 2,
+        Error::LimitExceeded("time") => 6,
         Error::LimitExceeded(_) | Error::Cancelled => 3,
         Error::InvalidPdfOption(_) => 4,
         _ => 5,
@@ -184,6 +185,7 @@ pub(super) fn error(kind: u8, message: String) -> Error {
         2 => Error::UnsupportedDocument(message),
         3 => Error::LimitExceeded("PDF worker limit"),
         4 => Error::InvalidPdfOption("the PDF worker rejected the options"),
+        6 => Error::LimitExceeded("time"),
         _ => Error::malformed("PDF worker", message),
     }
 }

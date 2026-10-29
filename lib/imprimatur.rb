@@ -115,6 +115,8 @@ module Imprimatur
     # image count (nil when unknown), truncation flag and failure reason.
     # Takes +first_page:+, +last_page:+, +max_pages:+ (500),
     # +max_page_bytes:+ (256 KiB), +max_output_bytes:+ (8 MiB), and read limits.
+    # Optional +batch_timeout:+ caps each worker attempt; +timeout:+ then bounds
+    # the whole call, including one-pass recovery of timeout-unread neighbours.
     # @return [Hash] +page_count:+, +encrypted:+ and +pages:+
     def pdf_pages(document, ...) = PdfReader.pages(document, ...)
 

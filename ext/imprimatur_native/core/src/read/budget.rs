@@ -45,6 +45,12 @@ impl Default for Limits {
 }
 
 impl Limits {
+    /// The configured overall read timeout, if enabled.
+    #[must_use]
+    pub const fn timeout_duration(&self) -> Option<Duration> {
+        self.timeout
+    }
+
     /// The largest document accepted, in bytes; 512 MiB by default.
     #[must_use]
     pub const fn max_input(mut self, bytes: usize) -> Self {
