@@ -17,9 +17,7 @@ class PdfTimeoutTest < Minitest::Test
     assert_equal [1, 2, 3], recovered[:pages].map { it[:page] }
     assert_equal 'text', recovered[:pages][0][:status]
     assert_equal 'text', recovered[:pages][2][:status]
-    # The graphics-only middle page may finish in its singleton attempt.
-    # Recovery need not fail it just because the original batch timed out.
-    assert_includes %w[empty skipped], recovered[:pages][1][:status]
+    assert_equal 'skipped', recovered[:pages][1][:status]
     assert_equal 'Healthy first page', recovered[:pages][0][:text]
     assert_equal 'Healthy third page', recovered[:pages][2][:text]
     # Caller remains usable after both worker kills.
@@ -39,21 +37,17 @@ class PdfTimeoutTest < Minitest::Test
   private
 
   def slow_middle_pdf
-    pages = (0...3).map do |index|
-      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' \
-        "/Resources << /Font << /F1 6 0 R >> >> /Contents #{7 + index} 0 R >>"
-    end
-    contents = [
-      'BT /F1 12 Tf 50 700 Td (Healthy first page) Tj ET',
-      "q Q\n" * 20_000_000,
-      'BT /F1 12 Tf 50 700 Td (Healthy third page) Tj ET'
-    ].map { PdfFixture.stream('/Filter /FlateDecode', Zlib::Deflate.deflate(it)) }
+    forms = %w[B C D].map { "/#{it} Do\n" * 100 } << ("q Q\n" * 100)
     PdfFixture.of [
       '<< /Type /Catalog /Pages 2 0 R >>',
-      '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>',
-      *pages,
+      '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 /MediaBox [0 0 612 792] /Resources ' \
+      '<< /Font << /F1 6 0 R >> /XObject << /A 10 0 R /B 11 0 R /C 12 0 R /D 13 0 R >> >> >>',
+      *(7..9).map { "<< /Type /Page /Parent 2 0 R /Contents #{it} 0 R >>" },
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-      *contents
+      PdfFixture.stream('', 'BT /F1 12 Tf 50 700 Td (Healthy first page) Tj ET'),
+      PdfFixture.stream('', "/A Do\n" * 100),
+      PdfFixture.stream('', 'BT /F1 12 Tf 50 700 Td (Healthy third page) Tj ET'),
+      *forms.map { PdfFixture.stream('/Type /XObject /Subtype /Form /BBox [0 0 612 792]', it) }
     ]
   end
 end

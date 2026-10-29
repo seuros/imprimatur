@@ -127,7 +127,7 @@ pub fn without_gvl<T, F>(
     job: F,
 ) -> Result<T, Error>
 where
-    F: Fn(&[u8], &Limits) -> imprimatur::Result<T>,
+    F: FnMut(&[u8], &Limits) -> imprimatur::Result<T>,
 {
     let document = crate::bytes(document);
     let cancel = Arc::new(AtomicBool::new(false));
@@ -174,7 +174,7 @@ where
 #[allow(unsafe_code)]
 unsafe extern "C" fn run<T, F>(data: *mut c_void) -> *mut c_void
 where
-    F: Fn(&[u8], &Limits) -> imprimatur::Result<T>,
+    F: FnMut(&[u8], &Limits) -> imprimatur::Result<T>,
 {
     // SAFETY: `data` is the `Read<T>` without_gvl passed, alive and not
     // otherwise borrowed until this returns.

@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use super::{Info, Pages, ReadOptions, RenderOptions};
 use crate::read::{Budget, Image, Limits};
 use crate::{Error, Result};
-pub use recovery::pages_isolated_recovering;
+pub use recovery::{Recovery, pages_isolated_recovering};
 pub use worker::worker_main;
 
 /// Inspects a PDF in the trusted, resource-limited worker.

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::read::without_gvl;
+use crate::{argument_error, domain_error};
 
 type Keywords = (Option<usize>, Option<u64>, Option<f64>, bool);
 
@@ -40,43 +41,51 @@ pub fn pages(
         pdf::ReadOptions { first_page, last_page, max_pages, max_page_bytes, max_output_bytes };
     let worker = PathBuf::from(worker);
     let process = process_limits(memory_bytes);
-    let value = without_gvl(ruby, document, keywords, |data, limits| {
-        let result = if let Some(seconds) = batch_timeout {
-            let attempt = Duration::try_from_secs_f64(seconds).map_err(|_| {
-                imprimatur::Error::InvalidPdfOption("batch timeout must be finite and positive")
-            })?;
+    let Some(seconds) = batch_timeout else {
+        let result = without_gvl(ruby, document, keywords, |data, limits| {
+            pdf::isolation::pages_isolated(&worker, data, &options, limits, &process)
+        })?;
+        return Ok(ruby.str_new(&pages_json(result)));
+    };
+    let attempt = Duration::try_from_secs_f64(seconds)
+        .map_err(|_| argument_error(ruby, "batch timeout must be finite and positive"))?;
+    let mut recovery = pdf::isolation::Recovery::new(&options, attempt)
+        .map_err(|error| domain_error(ruby, &error))?;
+    loop {
+        let step = without_gvl(ruby, document, keywords, |data, limits| {
             let process = pdf::isolation::ProcessLimits {
                 wall_time: limits.timeout_duration().unwrap_or(process.wall_time),
                 ..process.clone()
             };
-            pdf::isolation::pages_isolated_recovering(
-                &worker, data, &options, limits, &process, attempt,
-            )?
-        } else {
-            pdf::isolation::pages_isolated(&worker, data, &options, limits, &process)?
-        };
-        let pages: Vec<_> = result
-            .pages
-            .into_iter()
-            .map(|page| {
-                json!({
-                    "page": page.number,
-                    "status": page.status.as_str(),
-                    "text": page.text,
-                    "images": page.images,
-                    "truncated": page.truncated,
-                    "reason": page.reason,
-                })
+            recovery.step(&worker, data, limits, &process)
+        })?;
+        if let Some(result) = step {
+            return Ok(ruby.str_new(&pages_json(result)));
+        }
+    }
+}
+
+fn pages_json(result: pdf::Pages) -> String {
+    let pages: Vec<_> = result
+        .pages
+        .into_iter()
+        .map(|page| {
+            json!({
+                "page": page.number,
+                "status": page.status.as_str(),
+                "text": page.text,
+                "images": page.images,
+                "truncated": page.truncated,
+                "reason": page.reason,
             })
-            .collect();
-        Ok(json!({
-            "page_count": result.info.page_count,
-            "encrypted": result.info.encrypted,
-            "pages": pages,
         })
-        .to_string())
-    })?;
-    Ok(ruby.str_new(&value))
+        .collect();
+    json!({
+        "page_count": result.info.page_count,
+        "encrypted": result.info.encrypted,
+        "pages": pages,
+    })
+    .to_string()
 }
 
 pub fn render(

@@ -180,6 +180,33 @@ fn cancellation_during_recovery_propagates_instead_of_returning_partial_pages() 
 }
 
 #[test]
+fn a_cancelled_step_resumes_without_redoing_attempts_or_renewing_the_deadline() {
+    let worker = Worker::recovering(
+        &reply(3, vec![page(1, Status::Text, "kept")], None),
+        &[("3", single(3, page(3, Status::Text, "neighbour"))), ("2", "exec /bin/sleep 30".into())],
+    );
+    let flag = Arc::new(AtomicBool::new(false));
+    let limits = Limits::default().cancel_on(Arc::clone(&flag));
+    let process = ProcessLimits { wall_time: ATTEMPT * 3, ..ProcessLimits::default() };
+    let mut recovery = Recovery::new(&options(3), ATTEMPT).unwrap();
+    let mut step = || recovery.step(&worker.path, b"", &limits, &process);
+    let start = Instant::now();
+    assert_matches!(step(), Ok(None));
+    flag.store(true, Ordering::Relaxed);
+    assert_matches!(step(), Err(Error::Cancelled));
+    flag.store(false, Ordering::Relaxed);
+    assert_matches!(step(), Ok(None));
+    std::thread::sleep((start + ATTEMPT * 4).saturating_duration_since(Instant::now()));
+    let result = step().unwrap().unwrap();
+    let cap = ReadOptions::default().max_output_bytes;
+    assert_eq!(worker.attempts(), [format!("1:3:{cap}"), format!("3:3:{}", cap - 4)]);
+    assert_eq!(
+        outcomes(&result),
+        [(1, Status::Text, "kept"), (2, Status::Skipped, ""), (3, Status::Text, "neighbour")]
+    );
+}
+
+#[test]
 fn malformed_singleton_protocol_is_fatal() {
     let worker = Worker::recovering(
         &reply(3, vec![page(1, Status::Text, "kept")], None),
