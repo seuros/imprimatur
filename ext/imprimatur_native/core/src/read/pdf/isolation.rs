@@ -3,10 +3,10 @@
 
 mod protocol;
 mod recovery;
-#[cfg(test)]
-mod recovery_tests;
 mod stream;
 mod system;
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -75,6 +75,12 @@ impl Default for ProcessLimits {
     }
 }
 
+impl ProcessLimits {
+    fn wall_time_for(&self, limits: &Limits) -> Duration {
+        limits.timeout.unwrap_or(self.wall_time).min(self.wall_time)
+    }
+}
+
 /// Renders through the explicitly selected, trusted worker executable.
 ///
 /// The child is killed and reaped on timeout, cancellation, resource failure
@@ -130,23 +136,11 @@ fn invoke(
     limits: &Limits,
     process: &ProcessLimits,
 ) -> Result<Output> {
-    invoke_until(worker, data, operation, limits, process, None)
-}
-
-fn invoke_until(
-    worker: &Path,
-    data: &[u8],
-    operation: protocol::Operation,
-    limits: &Limits,
-    process: &ProcessLimits,
-    overall_deadline: Option<Instant>,
-) -> Result<Output> {
     let budget = Budget::new(limits, data.len())?;
     budget.check()?;
     let deadline = Instant::now()
         .checked_add(process.wall_time)
         .ok_or(Error::InvalidPdfOption("worker wall time is too large"))?;
-    let deadline = overall_deadline.map_or(deadline, |overall| overall.min(deadline));
     if !worker.is_absolute() || !worker.is_file() {
         return Err(Error::InvalidPdfOption("an absolute path to the render worker is required"));
     }

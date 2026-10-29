@@ -1,11 +1,16 @@
 //! Optional timeout-neighbour recovery under one overall supervisor deadline.
 
-use super::{ProcessLimits, invoke_until, protocol, stream};
-use crate::read::pdf::{Pages, ReadOptions, Status, bounded};
-use crate::read::{Budget, Limits};
-use crate::{Error, Result};
+use std::iter;
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+use super::{ProcessLimits, invoke, protocol, stream};
+use crate::read::Limits;
+use crate::read::pdf::{Pages, ReadOptions, Status, bounded};
+use crate::{Error, Result};
+
+#[cfg(test)]
+mod tests;
 
 /// Reads with a shorter worker-attempt timeout, recovering unread neighbours.
 ///
@@ -29,40 +34,27 @@ pub fn pages_isolated_recovering(
     if attempt_timeout.is_zero() {
         return Err(Error::InvalidPdfOption("batch timeout must be positive"));
     }
-    let budget = Budget::new(limits, data.len())?;
-    budget.check()?;
-    let wall_time = limits.timeout.unwrap_or(process.wall_time).min(process.wall_time);
     let deadline = Instant::now()
-        .checked_add(wall_time)
+        .checked_add(process.wall_time_for(limits))
         .ok_or(Error::InvalidPdfOption("worker wall time is too large"))?;
-    let attempt = process_with_remaining(process, deadline, attempt_timeout)?;
-    let attempt_limits = limits.clone().timeout(Some(attempt.wall_time));
-    let output = invoke_until(
-        worker,
-        data,
-        protocol::Operation::Pages(options.clone()),
-        &attempt_limits,
-        &attempt,
-        Some(deadline),
-    )?;
-    let (mut result, first_missing) = stream::decode_recoverable(output, options)?;
+    let attempt = |selection: &ReadOptions| {
+        let wall_time = deadline.saturating_duration_since(Instant::now()).min(attempt_timeout);
+        if wall_time.is_zero() {
+            return Err(Error::LimitExceeded("time"));
+        }
+        let process = ProcessLimits { wall_time, ..process.clone() };
+        let operation = protocol::Operation::Pages(selection.clone());
+        stream::decode_recoverable(invoke(worker, data, operation, limits, &process)?, selection)
+    };
+    let (mut result, first_missing) = attempt(options)?;
     let Some(first_missing) = first_missing else { return Ok(result) };
     let mut remaining =
         options.max_output_bytes - result.pages.iter().map(|page| page.text.len()).sum::<usize>();
     let count = result.pages.len();
-    for index in (first_missing + 1..count).chain(std::iter::once(first_missing)) {
+    for index in (first_missing + 1..count).chain(iter::once(first_missing)) {
         if index >= count || remaining == 0 {
             break;
         }
-        // Cancellation is never converted into a per-page failure.
-        match budget.check() {
-            Ok(()) => {}
-            Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(_) => break,
-        }
-        let Ok(attempt) = process_with_remaining(process, deadline, attempt_timeout) else {
-            break;
-        };
         let number = result.pages[index].number;
         let selection = ReadOptions {
             first_page: number,
@@ -71,18 +63,8 @@ pub fn pages_isolated_recovering(
             max_output_bytes: remaining,
             ..options.clone()
         };
-        let attempt_limits = limits.clone().timeout(Some(attempt.wall_time));
-        let recovered = invoke_until(
-            worker,
-            data,
-            protocol::Operation::Pages(selection.clone()),
-            &attempt_limits,
-            &attempt,
-            Some(deadline),
-        )
-        .and_then(|output| stream::decode(output, &selection));
-        match recovered {
-            Ok(mut single) => {
+        match attempt(&selection) {
+            Ok((mut single, _)) => {
                 if single.info != result.info || single.pages.len() != 1 {
                     return Err(Error::malformed("PDF worker", "inconsistent recovery metadata"));
                 }
@@ -90,20 +72,13 @@ pub fn pages_isolated_recovering(
                 remaining -= page.text.len();
                 result.pages[index] = page;
             }
-            Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(error @ Error::LimitExceeded("PDF worker output")) => return Err(error),
-            Err(error @ Error::LimitExceeded(_)) => {
+            Err(error @ Error::LimitExceeded(reason)) if reason != "PDF worker output" => {
                 // A retry can expire while spooling, before metadata exists.
                 // Keep the prefix even then; no attempt renews the outer clock.
                 if Instant::now() >= deadline {
                     break;
                 }
-                let status =
-                    if matches!(error, Error::LimitExceeded("time" | "render worker wall time")) {
-                        Status::Skipped
-                    } else {
-                        Status::Failed
-                    };
+                let status = if stream::expired(&error) { Status::Skipped } else { Status::Failed };
                 result.pages[index] = bounded::unread(number, status, error.to_string());
             }
             // Valid worker failures with metadata already decode to page
@@ -112,16 +87,4 @@ pub fn pages_isolated_recovering(
         }
     }
     Ok(result)
-}
-
-fn process_with_remaining(
-    process: &ProcessLimits,
-    deadline: Instant,
-    attempt_timeout: Duration,
-) -> Result<ProcessLimits> {
-    let remaining = deadline.saturating_duration_since(Instant::now()).min(attempt_timeout);
-    if remaining.is_zero() {
-        return Err(Error::LimitExceeded("time"));
-    }
-    Ok(ProcessLimits { memory_bytes: process.memory_bytes, wall_time: remaining })
 }

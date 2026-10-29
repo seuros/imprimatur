@@ -60,7 +60,7 @@ impl Request {
         if process.memory_bytes == 0 || process.memory_bytes >= i64::MAX as u64 {
             return Err(Error::InvalidPdfOption("memory limit must be positive and finite"));
         }
-        let wall = limits.timeout.unwrap_or(process.wall_time).min(process.wall_time);
+        let wall = process.wall_time_for(limits);
         let cpu_seconds = wall
             .as_secs()
             .checked_add(u64::from(wall.subsec_nanos() != 0))

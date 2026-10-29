@@ -80,10 +80,8 @@ pub(super) fn decode_recoverable(
     }
     let error = failure.ok_or_else(|| malformed("incomplete response"))?;
     let reason = error.to_string();
-    let timed_out = matches!(
-        error,
-        Error::LimitExceeded("time" | "render worker wall time" | "PDF worker limit")
-    );
+    let recoverable = expired(&error);
+    let timed_out = recoverable || matches!(error, Error::LimitExceeded("PDF worker limit"));
     let first_missing = pages.len();
     for index in first_missing..count {
         let number =
@@ -92,8 +90,11 @@ pub(super) fn decode_recoverable(
             if timed_out || index > first_missing { Status::Skipped } else { Status::Failed };
         pages.push(bounded::unread(number, status, reason.clone()));
     }
-    let recoverable = matches!(error, Error::LimitExceeded("time" | "render worker wall time"));
     Ok((Pages { info, pages }, recoverable.then_some(first_missing)))
+}
+
+pub(super) fn expired(error: &Error) -> bool {
+    matches!(error, Error::LimitExceeded("time" | "render worker wall time"))
 }
 
 fn selected(info: Info, options: &ReadOptions) -> usize {

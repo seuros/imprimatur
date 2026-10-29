@@ -39,33 +39,21 @@ class PdfTimeoutTest < Minitest::Test
   private
 
   def slow_middle_pdf
-    objects = [
-      '<< /Type /Catalog /Pages 2 0 R >>',
-      '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>'
-    ]
-    3.times do |index|
-      objects << "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " \
-                 "/Resources << /Font << /F1 6 0 R >> >> /Contents #{7 + index} 0 R >>"
+    pages = (0...3).map do |index|
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' \
+        "/Resources << /Font << /F1 6 0 R >> >> /Contents #{7 + index} 0 R >>"
     end
-    objects << '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
-    [
+    contents = [
       'BT /F1 12 Tf 50 700 Td (Healthy first page) Tj ET',
       "q Q\n" * 20_000_000,
       'BT /F1 12 Tf 50 700 Td (Healthy third page) Tj ET'
-    ].each do |stream|
-      compressed = Zlib::Deflate.deflate(stream)
-      objects << "<< /Length #{compressed.bytesize} /Filter /FlateDecode >>\nstream\n".b +
-                 compressed + "\nendstream"
-    end
-    pdf = "%PDF-1.4\n".b
-    offsets = objects.map.with_index do |object, index|
-      offset = pdf.bytesize
-      pdf << "#{index + 1} 0 obj\n" << object << "\nendobj\n"
-      offset
-    end
-    start = pdf.bytesize
-    pdf << "xref\n0 #{objects.size + 1}\n0000000000 65535 f \n"
-    offsets.each { pdf << format("%010d 00000 n \n", it) }
-    pdf << "trailer\n<< /Size #{objects.size + 1} /Root 1 0 R >>\nstartxref\n#{start}\n%%EOF\n"
+    ].map { PdfFixture.stream('/Filter /FlateDecode', Zlib::Deflate.deflate(it)) }
+    PdfFixture.of [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>',
+      *pages,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+      *contents
+    ]
   end
 end
