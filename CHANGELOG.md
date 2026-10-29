@@ -11,6 +11,14 @@
 - Allow a bounded exit grace when macOS cannot inspect an exiting worker;
   persistent monitor failures still terminate and reap a live worker.
 
+## [0.8.1](https://github.com/seuros/imprimatur/compare/v0.8.0...v0.8.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **pdf:** recover timeout neighbours within the overall deadline ([#16](https://github.com/seuros/imprimatur/issues/16)) ([e86fbbf](https://github.com/seuros/imprimatur/commit/e86fbbfef85f2c645090c43359c0744962e951a1))
+* **pdf:** step timeout recovery so a Ruby wakeup cannot restart it ([75c3894](https://github.com/seuros/imprimatur/commit/75c3894c8a791c5ef4af562dc99de4e745770ad3))
+
 ## [0.8.0](https://github.com/seuros/imprimatur/compare/v0.7.0...v0.8.0) (2026-10-27)
 
 
