@@ -25,6 +25,15 @@ pub(super) fn write(out: &mut impl Write, frame: &Frame) -> Result<()> {
 }
 
 pub(super) fn decode(output: Output, options: &ReadOptions) -> Result<Pages> {
+    decode_recoverable(output, options).map(|(pages, _)| pages)
+}
+
+// The index comes from the supervisor/protocol failure, not human-readable
+// page reasons: output-limit skips must never become recovery candidates.
+pub(super) fn decode_recoverable(
+    output: Output,
+    options: &ReadOptions,
+) -> Result<(Pages, Option<usize>)> {
     let mut failure = output.failure;
     if output.data.len() < protocol::HEADER.len() {
         return Err(failure.unwrap_or_else(|| malformed("missing response")));
@@ -67,14 +76,12 @@ pub(super) fn decode(output: Output, options: &ReadOptions) -> Result<Pages> {
         info.ok_or_else(|| failure.take().unwrap_or_else(|| malformed("missing metadata")))?;
     let count = selected(info, options);
     if pages.len() == count && ended {
-        return Ok(Pages { info, pages });
+        return Ok((Pages { info, pages }, None));
     }
     let error = failure.ok_or_else(|| malformed("incomplete response"))?;
     let reason = error.to_string();
-    let timed_out = matches!(
-        error,
-        Error::LimitExceeded("time" | "render worker wall time" | "PDF worker limit")
-    );
+    let recoverable = expired(&error);
+    let timed_out = recoverable || matches!(error, Error::LimitExceeded("PDF worker limit"));
     let first_missing = pages.len();
     for index in first_missing..count {
         let number =
@@ -83,7 +90,11 @@ pub(super) fn decode(output: Output, options: &ReadOptions) -> Result<Pages> {
             if timed_out || index > first_missing { Status::Skipped } else { Status::Failed };
         pages.push(bounded::unread(number, status, reason.clone()));
     }
-    Ok(Pages { info, pages })
+    Ok((Pages { info, pages }, recoverable.then_some(first_missing)))
+}
+
+pub(super) fn expired(error: &Error) -> bool {
+    matches!(error, Error::LimitExceeded("time" | "render worker wall time"))
 }
 
 fn selected(info: Info, options: &ReadOptions) -> usize {

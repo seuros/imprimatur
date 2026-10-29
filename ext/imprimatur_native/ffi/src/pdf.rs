@@ -4,6 +4,7 @@ use imprimatur::read::{Limits, pdf};
 use magnus::{Error, RString, Ruby};
 use serde_json::json;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::read::without_gvl;
 
@@ -29,17 +30,31 @@ pub fn pages(
     ruby: &Ruby,
     document: RString,
     keywords: Keywords,
-    options: (u32, u32, usize, usize, usize),
+    options: (u32, u32, usize, usize, usize, Option<f64>),
     worker: String,
     memory_bytes: u64,
 ) -> Result<RString, Error> {
-    let (first_page, last_page, max_pages, max_page_bytes, max_output_bytes) = options;
+    let (first_page, last_page, max_pages, max_page_bytes, max_output_bytes, batch_timeout) =
+        options;
     let options =
         pdf::ReadOptions { first_page, last_page, max_pages, max_page_bytes, max_output_bytes };
     let worker = PathBuf::from(worker);
     let process = process_limits(memory_bytes);
     let value = without_gvl(ruby, document, keywords, |data, limits| {
-        let result = pdf::isolation::pages_isolated(&worker, data, &options, limits, &process)?;
+        let result = if let Some(seconds) = batch_timeout {
+            let attempt = Duration::try_from_secs_f64(seconds).map_err(|_| {
+                imprimatur::Error::InvalidPdfOption("batch timeout must be finite and positive")
+            })?;
+            let process = pdf::isolation::ProcessLimits {
+                wall_time: limits.timeout_duration().unwrap_or(process.wall_time),
+                ..process.clone()
+            };
+            pdf::isolation::pages_isolated_recovering(
+                &worker, data, &options, limits, &process, attempt,
+            )?
+        } else {
+            pdf::isolation::pages_isolated(&worker, data, &options, limits, &process)?
+        };
         let pages: Vec<_> = result
             .pages
             .into_iter()

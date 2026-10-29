@@ -11,8 +11,9 @@ module Imprimatur
 
     def self.pages(document, first_page: 1, last_page: 0xFFFFFFFF, max_pages: 500,
                    max_page_bytes: 256 * 1024, max_output_bytes: 8 * 1024 * 1024,
-                   memory_bytes: 1024 * 1024 * 1024, max_bytes: nil, **limits)
-      options = [first_page, last_page, max_pages, max_page_bytes, max_output_bytes]
+                   memory_bytes: 1024 * 1024 * 1024, max_bytes: nil, batch_timeout: nil, **limits)
+      options = [first_page, last_page, max_pages, max_page_bytes, max_output_bytes,
+                 batch_timeout && Float(batch_timeout)]
       JSON.parse(Native.pdf_pages(Reader.read(document, max_bytes), Reader.limits(max_bytes:, **limits),
                                   options, RENDER_WORKER, memory_bytes),
                  symbolize_names: true)

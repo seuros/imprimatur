@@ -2,8 +2,11 @@
 //! occurs in the supervisor.
 
 mod protocol;
+mod recovery;
 mod stream;
 mod system;
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -18,6 +21,7 @@ use std::time::{Duration, Instant};
 use super::{Info, Pages, ReadOptions, RenderOptions};
 use crate::read::{Budget, Image, Limits};
 use crate::{Error, Result};
+pub use recovery::pages_isolated_recovering;
 pub use worker::worker_main;
 
 /// Inspects a PDF in the trusted, resource-limited worker.
@@ -68,6 +72,12 @@ pub struct ProcessLimits {
 impl Default for ProcessLimits {
     fn default() -> Self {
         Self { memory_bytes: 1024 * 1024 * 1024, wall_time: Duration::from_mins(1) }
+    }
+}
+
+impl ProcessLimits {
+    fn wall_time_for(&self, limits: &Limits) -> Duration {
+        limits.timeout.unwrap_or(self.wall_time).min(self.wall_time)
     }
 }
 

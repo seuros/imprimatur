@@ -38,3 +38,18 @@ module ZipReader
     end
   end
 end
+
+module PdfFixture
+  def self.of(objects)
+    pdf = "%PDF-1.7\n".b
+    offsets = objects.each_with_index.map do |object, index|
+      pdf.size.tap { pdf << "#{index + 1} 0 obj\n".b << object.b << "\nendobj\n".b }
+    end
+    xref = pdf.size
+    pdf << "xref\n0 #{objects.size + 1}\n0000000000 65535 f \n"
+    offsets.each { pdf << format("%010d 00000 n \n", it) }
+    pdf << "trailer\n<< /Size #{objects.size + 1} /Root 1 0 R >>\nstartxref\n#{xref}\n%%EOF\n"
+  end
+
+  def self.stream(dict, data) = "<< #{dict} /Length #{data.bytesize} >>\nstream\n".b + data.b + "\nendstream".b
+end

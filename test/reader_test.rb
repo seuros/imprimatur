@@ -17,7 +17,7 @@ class ReaderTest < Minitest::Test
 
   # A page drawing a 2 by 2 gray image at (72, 600), 100 by 50 points.
   def figure
-    objects = [
+    PdfFixture.of [
       '<< /Type /Catalog /Pages 2 0 R >>',
       '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
       '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R ' \
@@ -26,17 +26,9 @@ class ReaderTest < Minitest::Test
       stream('/Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceGray ' \
              '/BitsPerComponent 8', "\x00\x55\xAA\xFF".b)
     ]
-    pdf = "%PDF-1.7\n".b
-    offsets = objects.each_with_index.map do |object, index|
-      pdf.size.tap { pdf << "#{index + 1} 0 obj\n".b << object.b << "\nendobj\n".b }
-    end
-    xref = pdf.size
-    pdf << "xref\n0 #{objects.size + 1}\n0000000000 65535 f \n"
-    offsets.each { pdf << format("%010d 00000 n \n", it) }
-    pdf << "trailer\n<< /Size #{objects.size + 1} /Root 1 0 R >>\nstartxref\n#{xref}\n%%EOF\n"
   end
 
-  def stream(dict, data) = "<< #{dict} /Length #{data.bytesize} >>\nstream\n".b + data.b + "\nendstream".b
+  def stream(...) = PdfFixture.stream(...)
 
   # 3 pages, a "WATERMARK" drawn at the same spot in the middle of each
   # (not a header or footer), and body text that tells them apart.
@@ -46,7 +38,7 @@ class ReaderTest < Minitest::Test
       stream('', "BT /F1 12 Tf 72 700 Td (Body #{letter}) Tj ET " \
                   'BT /F1 36 Tf 150 400 Td (WATERMARK) Tj ET')
     end
-    objects = [
+    PdfFixture.of [
       '<< /Type /Catalog /Pages 2 0 R >>',
       "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 /MediaBox [0 0 612 792] " \
       '/Resources << /Font << /F1 9 0 R >> >> >>',
@@ -56,14 +48,6 @@ class ReaderTest < Minitest::Test
       *contents,
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
     ]
-    pdf = "%PDF-1.7\n".b
-    offsets = objects.each_with_index.map do |object, index|
-      pdf.size.tap { pdf << "#{index + 1} 0 obj\n".b << object.b << "\nendobj\n".b }
-    end
-    xref = pdf.size
-    pdf << "xref\n0 #{objects.size + 1}\n0000000000 65535 f \n"
-    offsets.each { pdf << format("%010d 00000 n \n", it) }
-    pdf << "trailer\n<< /Size #{objects.size + 1} /Root 1 0 R >>\nstartxref\n#{xref}\n%%EOF\n"
   end
 
   def test_reads_workbooks_documents_and_pdfs
