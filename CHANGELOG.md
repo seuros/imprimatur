@@ -1,16 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Isolate PDF metadata and text reads in the bundled resource-limited Rust
-  worker, as rendering already is; all three accept `memory_bytes:`.
-- On Linux/FreeBSD, re-exec the worker under its address-space limit before
-  reading the PDF, including tiny metadata-only reads.
-- Preserve completed pages on worker termination and recover healthy neighbors
-  after page-local stream limits without renewing the overall deadline.
-- Allow a bounded exit grace when macOS cannot inspect an exiting worker;
-  persistent monitor failures still terminate and reap a live worker.
-
 ## [0.8.1](https://github.com/seuros/imprimatur/compare/v0.8.0...v0.8.1) (2026-10-29)
 
 
