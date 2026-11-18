@@ -8,11 +8,45 @@
 mod tests;
 
 use std::fmt::Write as _;
+use std::ops::RangeInclusive;
 
 use super::content::{Block, Cell, Content, Grid, Page, Sheet, Text, push_reference};
 
 /// The deepest Markdown heading.
 const MAX_HEADING: u8 = 6;
+
+/// A page or sheet of [`Content::to_markdown_outline`]'s Markdown, by line:
+/// 1-based and inclusive. A page that writes nothing (the first, left blank)
+/// has an empty range.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Section {
+    pub kind: SectionKind,
+    pub lines: RangeInclusive<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SectionKind {
+    Page { number: u32, label: Option<String> },
+    Sheet { name: String, hidden: bool, table: Option<TableLines> },
+}
+
+/// Where a sheet's table sits. Every row is one line, so data row `n` is
+/// line `rows.start() + n - 1`; `header` is the header row and the
+/// separator under it, what a slice of rows needs to stay a table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableLines {
+    pub header: RangeInclusive<usize>,
+    /// Empty when the table is a header alone.
+    pub rows: RangeInclusive<usize>,
+}
+
+impl TableLines {
+    /// Data rows below the header.
+    #[must_use]
+    pub fn row_count(&self) -> usize {
+        self.rows.clone().count()
+    }
+}
 
 impl Content {
     /// The content as Markdown: a PDF's pages (from the second, marked
@@ -20,17 +54,48 @@ impl Content {
     /// document's blocks.
     #[must_use]
     pub fn to_markdown(&self) -> String {
+        self.to_markdown_outline().0
+    }
+
+    /// [`Content::to_markdown`], and where each page or sheet landed in it,
+    /// so a caller can hand out part of a long document without parsing the
+    /// Markdown back. A Word document has no sections.
+    #[must_use]
+    pub fn to_markdown_outline(&self) -> (String, Vec<Section>) {
         let mut out = String::new();
+        let mut lines = Lines::default();
+        let mut sections = Vec::new();
         match self {
-            Self::Pdf(pages) => pdf(&mut out, pages),
+            Self::Pdf(pages) => pdf(&mut out, pages, &mut lines, &mut sections),
             Self::Xlsx(sheets) | Self::Ods(sheets) | Self::Xls(sheets) => {
                 for sheet in sheets {
-                    write_sheet(&mut out, sheet);
+                    sections.push(write_sheet(&mut out, sheet, &mut lines));
                 }
             }
             Self::Docx(blocks) => write_blocks(&mut out, blocks.iter(), Mode::Body),
         }
-        out
+        (out, sections)
+    }
+}
+
+/// Counts lines of the output as it grows, each byte once.
+#[derive(Default)]
+struct Lines {
+    counted: usize,
+    newlines: usize,
+}
+
+impl Lines {
+    /// The line the next write to `out` starts on.
+    fn next(&mut self, out: &str) -> usize {
+        self.newlines += out[self.counted..].matches('\n').count();
+        self.counted = out.len();
+        self.newlines + 1
+    }
+
+    /// The last line written, when `out` ends with its newline.
+    fn last(&mut self, out: &str) -> usize {
+        self.next(out) - 1
     }
 }
 
@@ -43,13 +108,16 @@ pub enum Mode {
     Cell,
 }
 
-fn pdf(out: &mut String, pages: &[Page]) {
+fn pdf(out: &mut String, pages: &[Page], lines: &mut Lines, sections: &mut Vec<Section>) {
     // Every page past the first gets its marker, blocks or none: an empty
     // page (left bare by `--drop-repeated`, or genuinely blank) still needs
     // one, so the markers stay a reliable page count and index.
     for page in pages {
         if page.number > 1 {
             end_block(out);
+        }
+        let first = lines.next(out);
+        if page.number > 1 {
             // Writing to a String cannot fail.
             match &page.label {
                 Some(label) => {
@@ -61,21 +129,35 @@ fn pdf(out: &mut String, pages: &[Page]) {
             }
         }
         write_blocks(out, page.blocks.iter().map(|placed| &placed.block), Mode::Body);
+        sections.push(Section {
+            kind: SectionKind::Page { number: page.number, label: page.label.clone() },
+            lines: first..=lines.last(out),
+        });
     }
 }
 
-fn write_sheet(out: &mut String, sheet: &Sheet) {
+fn write_sheet(out: &mut String, sheet: &Sheet, lines: &mut Lines) -> Section {
     end_block(out);
+    let first = lines.next(out);
     out.push_str("## ");
     out.push_str(&sheet.name);
     if sheet.hidden {
         out.push_str(" (hidden)");
     }
     out.push_str("\n\n");
+    let mut table = None;
     if sheet.cells.is_empty() {
         out.push_str("_Empty._\n");
     } else {
+        let before = out.len();
+        let header = lines.next(out);
         write_table(out, &sheet.cells);
+        if out.len() > before {
+            table = Some(TableLines {
+                header: header..=header + 1,
+                rows: header + 2..=lines.last(out),
+            });
+        }
     }
     for (index, note) in sheet.comments.iter().enumerate() {
         if index == 0 {
@@ -97,6 +179,10 @@ fn write_sheet(out: &mut String, sheet: &Sheet) {
             out.push_str(line.trim_end());
         }
         out.push('\n');
+    }
+    Section {
+        kind: SectionKind::Sheet { name: sheet.name.clone(), hidden: sheet.hidden, table },
+        lines: first..=lines.last(out),
     }
 }
 

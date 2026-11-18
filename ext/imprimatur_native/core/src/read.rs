@@ -42,6 +42,7 @@ pub use content::{
 pub(crate) use image::png;
 pub use image::{Image, ImageFormat, ImageLocation};
 pub(crate) use image::{PngColor, png_with_transparency};
+pub use markdown::{Section, SectionKind, TableLines};
 
 use crate::zip::reader::ZipReader;
 use crate::{Error, Result};
@@ -121,6 +122,17 @@ pub fn markdown(document: &[u8], limits: &Limits) -> Result<String> {
     let content = content(document, limits)?;
     content.ensure_text_layer()?;
     Ok(content.to_markdown())
+}
+
+/// Reads a document as Markdown with its outline: [`content`], then
+/// [`Content::to_markdown_outline`].
+///
+/// # Errors
+/// As [`markdown`].
+pub fn markdown_outline(document: &[u8], limits: &Limits) -> Result<(String, Vec<Section>)> {
+    let content = content(document, limits)?;
+    content.ensure_text_layer()?;
+    Ok(content.to_markdown_outline())
 }
 
 /// Calls `each` with every image in a document, as a file.
