@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/seuros/imprimatur/compare/v0.8.1...v0.9.0) (2026-11-18)
+
+
+### Features
+
+* **read:** to_markdown_outline reports each page's and sheet's lines ([#18](https://github.com/seuros/imprimatur/issues/18)) ([f0b262a](https://github.com/seuros/imprimatur/commit/f0b262acde3f248ca0b10c11ba85e6e1f39a6a3a))
+
 ## [0.8.1](https://github.com/seuros/imprimatur/compare/v0.8.0...v0.8.1) (2026-10-29)
 
 
