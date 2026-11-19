@@ -143,5 +143,5 @@ pub fn define(ruby: &Ruby, imprimatur: magnus::RModule) -> Result<(), Error> {
     class.define_method("width", method!(Barcode::width, 0))?;
     class.define_method("height", method!(Barcode::height, 0))?;
     class.define_method("modules", method!(Barcode::modules, 0))?;
-    Ok(())
+    matryona_machines::ruby::Class::pin_wrapped::<Barcode>(ruby, class).map(drop)
 }

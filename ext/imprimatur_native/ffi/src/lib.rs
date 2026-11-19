@@ -6,6 +6,7 @@
 mod archive;
 mod barcode;
 mod blocking;
+mod classes;
 mod convert;
 mod document;
 mod pdf;
@@ -18,12 +19,11 @@ use std::cell::{RefCell, RefMut};
 
 use imprimatur::style::{Align, TextDirection};
 use imprimatur::xlsx::{CellRange, Comment, Workbook, Worksheet, parse_cell_reference};
-use magnus::{
-    Error, ExceptionClass, RArray, RModule, RString, Ruby, TryConvert, Value, function, method,
-    prelude::*,
-};
+use magnus::{Error, RArray, RString, Ruby, TryConvert, Value, function, method, prelude::*};
 
-use convert::{Classes, to_cell};
+use classes::classes;
+use convert::to_cell;
+use matryona_machines::ruby::Class;
 use style::Style;
 use validation::Validation;
 
@@ -53,10 +53,9 @@ impl NativeWorkbook {
     ) -> Result<(), Error> {
         // Convert before borrowing: a Formula's #expression or a Date's
         // #year is Ruby code that could call back into this workbook.
-        let classes = Classes::load(ruby)?;
         let mut row = Vec::with_capacity(cells.len());
         for value in cells {
-            row.push(to_cell(ruby, value, &classes)?);
+            row.push(to_cell(ruby, value)?);
         }
         let styles = row_styles(ruby, style, row.len())?;
         let mut book = borrow(ruby, &rb_self.0, "workbook")?;
@@ -75,7 +74,7 @@ impl NativeWorkbook {
         style: Option<&Style>,
     ) -> Result<(), Error> {
         let (sheet, row, column) = position;
-        let cell = to_cell(ruby, value, &Classes::load(ruby)?)?
+        let cell = to_cell(ruby, value)?
             .ok_or_else(|| argument_error(ruby, "a cell cannot be set to nil"))?;
         let mut book = borrow(ruby, &rb_self.0, "workbook")?;
         let sheet = sheet_mut(ruby, &mut book, sheet)?;
@@ -281,21 +280,20 @@ fn domain_error(ruby: &Ruby, error: &imprimatur::Error) -> Error {
     if let imprimatur::Error::InvalidPdfOption(message) = error {
         return argument_error(ruby, *message);
     }
-    let name = match error {
-        imprimatur::Error::NoTextLayer => "NoTextLayer",
-        imprimatur::Error::PasswordRequired => "PasswordRequired",
-        imprimatur::Error::UnsupportedDocument(_) => "UnsupportedDocument",
-        imprimatur::Error::LimitExceeded(_) | imprimatur::Error::Cancelled => "LimitExceeded",
-        _ => "Error",
+    let classes = match classes(ruby) {
+        Ok(classes) => classes,
+        Err(unloaded) => return unloaded,
     };
-    let class = ruby
-        .class_object()
-        .const_get::<_, RModule>("Imprimatur")
-        .and_then(|module| module.const_get::<_, ExceptionClass>(name));
-    match class {
-        Ok(class) => Error::new(class, error.to_string()),
-        Err(lookup) => lookup,
-    }
+    let class = match error {
+        imprimatur::Error::NoTextLayer => classes.no_text_layer,
+        imprimatur::Error::PasswordRequired => classes.password_required,
+        imprimatur::Error::UnsupportedDocument(_) => classes.unsupported_document,
+        imprimatur::Error::LimitExceeded(_) | imprimatur::Error::Cancelled => {
+            classes.limit_exceeded
+        }
+        _ => classes.error,
+    };
+    Error::new(classes::exception(ruby, class), error.to_string())
 }
 
 /// The value for a symbol among `choices`, or an `ArgumentError` naming them.
@@ -316,10 +314,13 @@ fn keyword<T: Copy>(
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
     let imprimatur = ruby.define_module("Imprimatur")?;
+    classes::resolve(ruby, imprimatur)?;
     let style = imprimatur.define_class("Style", ruby.class_object())?;
     style.define_singleton_method("__build", function!(Style::build, 13))?;
+    Class::pin_wrapped::<Style>(ruby, style)?;
     let validation = imprimatur.define_class("Validation", ruby.class_object())?;
     validation.define_singleton_method("__build", function!(Validation::build, 8))?;
+    Class::pin_wrapped::<Validation>(ruby, validation)?;
     barcode::define(ruby, imprimatur)?;
 
     let native = imprimatur.define_module("Native")?;
@@ -336,12 +337,14 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     zip_writer.define_method("add", method!(archive::ZipWriter::add, 3))?;
     zip_writer.define_method("comment=", method!(archive::ZipWriter::set_comment, 1))?;
     zip_writer.define_method("finish", method!(archive::ZipWriter::finish, 0))?;
+    Class::pin_wrapped::<archive::ZipWriter>(ruby, zip_writer)?;
     let zip_reader = native.define_class("ZipReader", ruby.class_object())?;
     zip_reader.define_singleton_method("new", function!(archive::ZipReader::new, 1))?;
     zip_reader.define_method("names", method!(archive::ZipReader::names, 0))?;
     zip_reader.define_method("entries", method!(archive::ZipReader::entries, 0))?;
     zip_reader.define_method("read", method!(archive::ZipReader::read, 2))?;
     zip_reader.define_method("extract", method!(archive::ZipReader::extract, 3))?;
+    Class::pin_wrapped::<archive::ZipReader>(ruby, zip_reader)?;
     document::define(ruby, native)?;
     let workbook = native.define_class("Workbook", ruby.class_object())?;
     workbook.define_singleton_method("new", function!(NativeWorkbook::new, 0))?;
@@ -357,5 +360,5 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     workbook.define_method("next_row", method!(NativeWorkbook::next_row, 1))?;
     workbook.define_method("render", method!(NativeWorkbook::render, 0))?;
     workbook.define_method("save", method!(NativeWorkbook::save, 1))?;
-    Ok(())
+    Class::pin_wrapped::<NativeWorkbook>(ruby, workbook).map(drop)
 }

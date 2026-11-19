@@ -215,5 +215,5 @@ pub fn define(ruby: &Ruby, native: RModule) -> Result<(), Error> {
     class.define_method("page_break", method!(NativeDocument::page_break, 0))?;
     class.define_method("render", method!(NativeDocument::render, 1))?;
     class.define_method("save", method!(NativeDocument::save, 2))?;
-    Ok(())
+    matryona_machines::ruby::Class::pin_wrapped::<NativeDocument>(ruby, class).map(drop)
 }
