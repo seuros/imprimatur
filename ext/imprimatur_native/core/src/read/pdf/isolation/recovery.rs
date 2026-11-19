@@ -1,6 +1,7 @@
 //! Optional timeout-neighbour recovery under one overall supervisor deadline.
 
 use std::iter;
+use std::mem;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -47,9 +48,18 @@ pub struct Recovery {
     options: ReadOptions,
     attempt_timeout: Duration,
     deadline: Option<Instant>,
-    result: Option<Pages>,
-    pending: Vec<usize>,
-    remaining: usize,
+    phase: Phase,
+}
+
+enum Phase {
+    Batch,
+    /// `pending` pages are retried alone, last first.
+    Singles {
+        result: Pages,
+        pending: Vec<usize>,
+        remaining: usize,
+    },
+    Done,
 }
 
 impl Recovery {
@@ -59,20 +69,13 @@ impl Recovery {
         if attempt_timeout.is_zero() {
             return Err(Error::InvalidPdfOption("batch timeout must be positive"));
         }
-        Ok(Self {
-            options: options.clone(),
-            attempt_timeout,
-            deadline: None,
-            result: None,
-            pending: Vec::new(),
-            remaining: options.max_output_bytes,
-        })
+        Ok(Self { options: options.clone(), attempt_timeout, deadline: None, phase: Phase::Batch })
     }
 
     /// Runs the next worker attempt; the pages once recovery is over.
     ///
     /// # Errors
-    /// As [`pages_isolated_recovering`].
+    /// As [`pages_isolated_recovering`], or a step after the pages were returned.
     pub fn step(
         &mut self,
         worker: &Path,
@@ -80,6 +83,9 @@ impl Recovery {
         limits: &Limits,
         process: &ProcessLimits,
     ) -> Result<Option<Pages>> {
+        if matches!(self.phase, Phase::Done) {
+            return Err(Error::InvalidPdfOption("recovery has already returned its pages"));
+        }
         let deadline = self.deadline(limits, process)?;
         let attempt_timeout = self.attempt_timeout;
         let attempt = |selection: &ReadOptions| {
@@ -94,26 +100,30 @@ impl Recovery {
                 selection,
             )
         };
-        let Some(result) = &mut self.result else {
+        let Phase::Singles { result, pending, remaining } = &mut self.phase else {
             let (pages, first_missing) = attempt(&self.options)?;
-            let Some(first_missing) = first_missing else { return Ok(Some(pages)) };
+            let Some(first_missing) = first_missing else {
+                self.phase = Phase::Done;
+                return Ok(Some(pages));
+            };
             let count = pages.pages.len();
-            self.pending = (first_missing + 1..count)
+            let pending = (first_missing + 1..count)
                 .chain(iter::once(first_missing))
                 .filter(|&index| index < count)
                 .rev()
                 .collect();
-            self.remaining -= pages.pages.iter().map(|page| page.text.len()).sum::<usize>();
-            self.result = Some(pages);
+            let read: usize = pages.pages.iter().map(|page| page.text.len()).sum();
+            let remaining = self.options.max_output_bytes.saturating_sub(read);
+            self.phase = Phase::Singles { result: pages, pending, remaining };
             return Ok(self.settle());
         };
-        let Some(&index) = self.pending.last() else { return Ok(self.result.take()) };
+        let Some(&index) = pending.last() else { return Ok(self.finish()) };
         let number = result.pages[index].number;
         let selection = ReadOptions {
             first_page: number,
             last_page: number,
             max_pages: 1,
-            max_output_bytes: self.remaining,
+            max_output_bytes: *remaining,
             ..self.options.clone()
         };
         match attempt(&selection) {
@@ -122,14 +132,14 @@ impl Recovery {
                     return Err(Error::malformed("PDF worker", "inconsistent recovery metadata"));
                 }
                 let page = single.pages.remove(0);
-                self.remaining -= page.text.len();
+                *remaining = remaining.saturating_sub(page.text.len());
                 result.pages[index] = page;
             }
             Err(error @ Error::LimitExceeded(reason)) if reason != "PDF worker output" => {
                 // A retry can expire while spooling, before metadata exists.
                 // Keep the prefix even then; no attempt renews the outer clock.
                 if Instant::now() >= deadline {
-                    return Ok(self.result.take());
+                    return Ok(self.finish());
                 }
                 let status = if stream::expired(&error) { Status::Skipped } else { Status::Failed };
                 result.pages[index] = bounded::unread(number, status, error.to_string());
@@ -138,7 +148,7 @@ impl Recovery {
             // records. Infrastructure/protocol errors are not page damage.
             Err(error) => return Err(error),
         }
-        self.pending.pop();
+        pending.pop();
         Ok(self.settle())
     }
 
@@ -152,7 +162,19 @@ impl Recovery {
         Ok(*self.deadline.insert(deadline))
     }
 
-    const fn settle(&mut self) -> Option<Pages> {
-        if self.pending.is_empty() || self.remaining == 0 { self.result.take() } else { None }
+    fn settle(&mut self) -> Option<Pages> {
+        match &self.phase {
+            Phase::Singles { pending, remaining, .. } if pending.is_empty() || *remaining == 0 => {
+                self.finish()
+            }
+            _ => None,
+        }
+    }
+
+    fn finish(&mut self) -> Option<Pages> {
+        match mem::replace(&mut self.phase, Phase::Done) {
+            Phase::Singles { result, .. } => Some(result),
+            Phase::Batch | Phase::Done => None,
+        }
     }
 }

@@ -225,3 +225,26 @@ fn singleton_spawn_io_failure_is_fatal() {
     assert_matches!(recover(&worker, &options(3)), Err(Error::Io(_)));
     assert_eq!(worker.attempts().len(), 1);
 }
+
+#[test]
+fn a_step_after_the_pages_were_returned_is_refused_and_runs_no_worker() {
+    let complete = reply(1, vec![page(1, Status::Text, "kept")], Some(Frame::End));
+    let recovered = Worker::recovering(
+        &reply(2, vec![page(1, Status::Text, "kept")], None),
+        &[("2", single(2, page(2, Status::Text, "later")))],
+    );
+    for (worker, last_page, attempts) in [(Worker::new(&complete), 1, 1), (recovered, 2, 2)] {
+        let mut recovery = Recovery::new(&options(last_page), ATTEMPT).unwrap();
+        let limits = Limits::default();
+        let process = ProcessLimits::default();
+        let mut step = || recovery.step(&worker.path, b"", &limits, &process);
+        let pages = loop {
+            if let Some(pages) = step().unwrap() {
+                break pages;
+            }
+        };
+        assert_eq!(pages.pages.len(), attempts);
+        assert_matches!(step(), Err(Error::InvalidPdfOption(_)));
+        assert_eq!(worker.attempts().len(), attempts);
+    }
+}
