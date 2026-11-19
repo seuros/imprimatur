@@ -2,32 +2,17 @@
 
 use imprimatur::xlsx::{Cell, DateTime};
 use magnus::prelude::*;
-use magnus::{Error, Float, Integer, RClass, RString, Ruby, Value};
+use magnus::{Error, Float, Integer, RString, Ruby, Value};
 
+use crate::classes::{self, classes};
 use crate::{OrRaise, domain_error};
 
 /// The largest integer every `f64` neighbour of which is also an integer:
 /// beyond it, Excel would silently store a different number.
 const MAX_EXACT_INTEGER: u64 = 1 << 53;
 
-/// Ruby classes looked up once per call, not once per cell.
-pub struct Classes {
-    formula: RClass,
-    date: Option<RClass>,
-}
-
-impl Classes {
-    pub fn load(ruby: &Ruby) -> Result<Self, Error> {
-        let imprimatur: magnus::RModule = ruby.class_object().const_get("Imprimatur")?;
-        // Date is only there once something has required 'date'.
-        let date_defined: bool = ruby.class_object().funcall("const_defined?", ("Date",))?;
-        let date = if date_defined { Some(ruby.class_object().const_get("Date")?) } else { None };
-        Ok(Self { formula: imprimatur.const_get("Formula")?, date })
-    }
-}
-
 /// `nil` is no cell.
-pub fn to_cell(ruby: &Ruby, value: Value, classes: &Classes) -> Result<Option<Cell>, Error> {
+pub fn to_cell(ruby: &Ruby, value: Value) -> Result<Option<Cell>, Error> {
     if value.is_nil() {
         return Ok(None);
     }
@@ -46,14 +31,14 @@ pub fn to_cell(ruby: &Ruby, value: Value, classes: &Classes) -> Result<Option<Ce
     if value.is_kind_of(ruby.class_false_class()) {
         return Ok(Some(Cell::Bool(false)));
     }
-    if value.is_kind_of(classes.formula) {
+    if value.is_kind_of(classes(ruby)?.formula.get(ruby)) {
         let expression: String = value.funcall("expression", ())?;
         return Ok(Some(Cell::formula(expression)));
     }
     if value.is_kind_of(ruby.class_time()) {
         return time_cell(ruby, value).map(Some);
     }
-    if let Some(date) = classes.date
+    if let Some(date) = classes::date(ruby)?
         && value.is_kind_of(date)
     {
         // DateTime is a Date with a time of day; a plain Date has none.

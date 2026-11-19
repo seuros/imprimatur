@@ -19,4 +19,5 @@ workspace = true
 imprimatur = { workspace = true, features = ["archive", "fonts", "json", "isolation"] }
 serde_json.workspace = true
 magnus.workspace = true
+matryona-machines = { workspace = true, features = ["ruby"] }
 rb-sys.workspace = true
