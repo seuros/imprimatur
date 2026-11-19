@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.1](https://github.com/seuros/imprimatur/compare/v0.9.0...v0.9.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **pdf:** refuse a recovery step after the pages were returned ([6723e3e](https://github.com/seuros/imprimatur/commit/6723e3ecd0009dc10b4136cfcb15b7bdd65022cb))
+
+
+### Performance Improvements
+
+* **ruby:** resolve the binding's classes once at load ([6271c0e](https://github.com/seuros/imprimatur/commit/6271c0e5ef5d39dcc1047e818d4c6cccd7d3c2b4))
+
 ## [0.9.0](https://github.com/seuros/imprimatur/compare/v0.8.1...v0.9.0) (2026-11-18)
 
 
